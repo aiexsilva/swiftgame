@@ -8,5 +8,6 @@ struct PhysicsCategory {
     static let artifact:   UInt32 = 0b1000     // 8
     static let platform:   UInt32 = 0b10000    // 16
     static let teleport:   UInt32 = 0b100000   // 32
+    static let wall:       UInt32 = 0b1000000  // 64 (world boundary, blocks player but is not "ground")
     static let all:        UInt32 = UInt32.max
 }

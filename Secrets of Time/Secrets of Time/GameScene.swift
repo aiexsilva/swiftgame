@@ -17,6 +17,50 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var rightButton: SKShapeNode!
     private var jumpButton: SKShapeNode!
     private var attackButton: SKShapeNode!
+    private var healthHUD: HealthHUD!
+    /// Currently alive enemies. Populated at level start, drained as enemies die.
+    private var enemies: [EnemyNode] = []
+    /// Level configuration: where to spawn each enemy when the level (re)starts.
+    private var enemySpawns: [EnemySpawn] = []
+    private var damageCooldown: TimeInterval = 0
+
+    private var isGameOver: Bool = false
+    private var gameOverOverlay: SKNode?
+    private var isPaused_: Bool = false
+    private var pauseOverlay: SKNode?
+    private var pauseButton: SKShapeNode!
+    private var damageVignette: SKShapeNode?
+    private let playerSpawn = CGPoint(x: 120, y: 200)
+
+    private struct EnemySpawn {
+        let minX: CGFloat
+        let maxX: CGFloat
+        let y: CGFloat
+    }
+
+    // World horizontal bounds. The camera stops scrolling when its edge hits these,
+    // and physical walls prevent the player from leaving.
+    private var worldMinX: CGFloat = 0
+    private var worldMaxX: CGFloat = 0
+
+    /// Size of the area actually visible on screen, in scene coordinates.
+    /// Accounts for aspectFill cropping.
+    private var visibleSize: CGSize = .zero
+
+    private func computeVisibleSize(for view: SKView) -> CGSize {
+        let viewSize = view.bounds.size
+        guard viewSize.width > 0, viewSize.height > 0 else { return size }
+        switch scaleMode {
+        case .aspectFill:
+            let scale = max(viewSize.width / size.width, viewSize.height / size.height)
+            return CGSize(width: viewSize.width / scale, height: viewSize.height / scale)
+        case .aspectFit:
+            let scale = min(viewSize.width / size.width, viewSize.height / size.height)
+            return CGSize(width: viewSize.width / scale, height: viewSize.height / scale)
+        default:
+            return size
+        }
+    }
 
     // Track which finger is on which button
     private var leftTouch: UITouch?
@@ -28,16 +72,27 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         physicsWorld.gravity = CGVector(dx: 0, dy: -9.0)
         physicsWorld.contactDelegate = self
 
+        visibleSize = computeVisibleSize(for: view)
+
+        // World extends from -size.width to 2*size.width (matches the ground).
+        worldMinX = -size.width
+        worldMaxX = size.width * 2
+
         setupCamera()
         setupGround()
+        setupWorldBounds()
         setupPlatforms()
         setupPlayer()
+        setupEnemies()
         setupHUD()
     }
+
+    private static let cameraZoom: CGFloat = 0.65  // <1 = zoom in
 
     private func setupCamera() {
         let cam = SKCameraNode()
         cam.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        cam.setScale(GameScene.cameraZoom)
         addChild(cam)
         camera = cam
     }
@@ -84,8 +139,211 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private func setupPlayer() {
         player = PlayerNode()
-        player.position = CGPoint(x: 120, y: 200)
+        player.position = playerSpawn
+        player.onHealthChanged = { [weak self] current, max in
+            self?.healthHUD.setHealth(current: current, max: max)
+            if current <= 0 { self?.triggerGameOver() }
+        }
         addChild(player)
+    }
+
+    private func setupWorldBounds() {
+        let wallThickness: CGFloat = 20
+        let wallHeight: CGFloat = size.height * 4
+        addWall(x: worldMinX - wallThickness / 2, thickness: wallThickness, height: wallHeight)
+        addWall(x: worldMaxX + wallThickness / 2, thickness: wallThickness, height: wallHeight)
+    }
+
+    private func addWall(x: CGFloat, thickness: CGFloat, height: CGFloat) {
+        let wall = SKNode()
+        wall.position = CGPoint(x: x, y: height / 2)
+        let body = SKPhysicsBody(rectangleOf: CGSize(width: thickness, height: height))
+        body.isDynamic = false
+        body.friction = 0.0
+        body.categoryBitMask = PhysicsCategory.wall
+        body.collisionBitMask = PhysicsCategory.player
+        body.contactTestBitMask = 0
+        wall.physicsBody = body
+        addChild(wall)
+    }
+
+    private func setupEnemies() {
+        // Level enemy roster — edit here to design the level.
+        enemySpawns = [
+            EnemySpawn(minX: size.width * 0.40, maxX: size.width * 0.70, y: 90),
+        ]
+        spawnEnemies()
+    }
+
+    /// Removes any existing enemy nodes and spawns a fresh set from `enemySpawns`.
+    private func spawnEnemies() {
+        for enemy in enemies { enemy.removeFromParent() }
+        enemies.removeAll()
+
+        for spawn in enemySpawns {
+            let enemy = EnemyNode(minX: spawn.minX, maxX: spawn.maxX)
+            enemy.position = CGPoint(x: spawn.minX, y: spawn.y)
+            enemy.onDeath = { [weak self] dead in
+                self?.enemies.removeAll { $0 === dead }
+            }
+            addChild(enemy)
+            enemies.append(enemy)
+        }
+    }
+
+    /// Repopulates the enemy list, resets the player, and clears the game-over state.
+    func restartLevel() {
+        spawnEnemies()
+
+        // Reset player
+        player.position = playerSpawn
+        player.physicsBody?.velocity = .zero
+        player.stopMoving()
+        player.resetHealth()
+
+        // Clear damage cooldown & overlay
+        damageCooldown = 0
+        gameOverOverlay?.removeFromParent()
+        gameOverOverlay = nil
+        isGameOver = false
+        physicsWorld.speed = 1
+        lastUpdateTime = 0
+        leftTouch = nil
+        rightTouch = nil
+    }
+
+    private func triggerGameOver() {
+        guard !isGameOver else { return }
+        isGameOver = true
+        player.stopMoving()
+        player.physicsBody?.velocity = .zero
+        physicsWorld.speed = 0
+        showGameOverOverlay()
+    }
+
+    private func showGameOverOverlay() {
+        guard let cam = camera else { return }
+        let overlay = SKNode()
+        overlay.zPosition = 2000
+
+        let halfW = visibleSize.width / 2
+        let halfH = visibleSize.height / 2
+
+        let bg = SKShapeNode(rectOf: CGSize(width: visibleSize.width, height: visibleSize.height))
+        bg.fillColor = SKColor(white: 0, alpha: 0.6)
+        bg.strokeColor = .clear
+        overlay.addChild(bg)
+
+        let label = SKLabelNode(text: "GAME OVER")
+        label.fontName = "AvenirNext-Bold"
+        label.fontSize = 96
+        label.fontColor = .white
+        label.position = CGPoint(x: 0, y: 60)
+        overlay.addChild(label)
+
+        overlay.addChild(makeOverlayButton(
+            name: "restartButton", label: "RESTART", position: CGPoint(x: 0, y: -80)
+        ))
+        overlay.addChild(makeOverlayButton(
+            name: "menuButton", label: "MAIN MENU", position: CGPoint(x: 0, y: -190)
+        ))
+
+        _ = halfW; _ = halfH
+        cam.addChild(overlay)
+        gameOverOverlay = overlay
+    }
+
+    private func makeOverlayButton(name: String, label: String, position: CGPoint) -> SKShapeNode {
+        let button = SKShapeNode(rectOf: CGSize(width: 360, height: 90), cornerRadius: 12)
+        button.name = name
+        button.fillColor = SKColor(white: 1.0, alpha: 0.2)
+        button.strokeColor = SKColor(white: 1.0, alpha: 0.8)
+        button.lineWidth = 3
+        button.position = position
+        let text = SKLabelNode(text: label)
+        text.fontName = "AvenirNext-Bold"
+        text.fontSize = 44
+        text.fontColor = .white
+        text.verticalAlignmentMode = .center
+        button.addChild(text)
+        return button
+    }
+
+    private func pauseGame() {
+        guard !isPaused_, !isGameOver else { return }
+        isPaused_ = true
+        player.stopMoving()
+        leftTouch = nil
+        rightTouch = nil
+        physicsWorld.speed = 0
+        showPauseOverlay()
+    }
+
+    private func resumeGame() {
+        guard isPaused_ else { return }
+        isPaused_ = false
+        physicsWorld.speed = 1
+        pauseOverlay?.removeFromParent()
+        pauseOverlay = nil
+        lastUpdateTime = 0   // avoid a big dt spike on resume
+    }
+
+    private func showPauseOverlay() {
+        guard let cam = camera else { return }
+        let overlay = SKNode()
+        overlay.zPosition = 2000
+
+        let bg = SKShapeNode(rectOf: CGSize(width: visibleSize.width, height: visibleSize.height))
+        bg.fillColor = SKColor(white: 0, alpha: 0.6)
+        bg.strokeColor = .clear
+        overlay.addChild(bg)
+
+        let label = SKLabelNode(text: "PAUSED")
+        label.fontName = "AvenirNext-Bold"
+        label.fontSize = 96
+        label.fontColor = .white
+        label.position = CGPoint(x: 0, y: 140)
+        overlay.addChild(label)
+
+        overlay.addChild(makeOverlayButton(
+            name: "resumeButton", label: "RESUME", position: CGPoint(x: 0, y: 30)
+        ))
+        overlay.addChild(makeOverlayButton(
+            name: "restartButton", label: "RESTART", position: CGPoint(x: 0, y: -80)
+        ))
+        overlay.addChild(makeOverlayButton(
+            name: "menuButton", label: "MAIN MENU", position: CGPoint(x: 0, y: -190)
+        ))
+
+        cam.addChild(overlay)
+        pauseOverlay = overlay
+    }
+
+    private func flashDamageVignette() {
+        guard let cam = camera else { return }
+        damageVignette?.removeFromParent()
+
+        let vignette = SKShapeNode(rectOf: visibleSize)
+        vignette.fillColor = .clear
+        vignette.strokeColor = SKColor.red
+        vignette.lineWidth = 80
+        vignette.alpha = 0
+        vignette.zPosition = 1500
+        cam.addChild(vignette)
+        damageVignette = vignette
+
+        vignette.run(.sequence([
+            .fadeAlpha(to: 0.7, duration: 0.06),
+            .fadeAlpha(to: 0.0, duration: 0.25),
+            .removeFromParent()
+        ]))
+    }
+
+    private func goToMainMenu() {
+        guard let view = self.view else { return }
+        let menu = MenuScene(size: size)
+        menu.scaleMode = scaleMode
+        view.presentScene(menu, transition: .fade(withDuration: 0.4))
     }
 
     // MARK: - HUD
@@ -93,23 +351,49 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupHUD() {
         guard let cam = camera else { return }
 
-        let bottomY = -size.height / 2 + 140
+        let halfW = visibleSize.width / 2
+        let halfH = visibleSize.height / 2
+        let bottomY = -halfH + 140
 
-        leftButton = makeButton(label: "◀", position: CGPoint(x: -size.width / 2 + 110, y: bottomY))
+        leftButton = makeButton(label: "◀", position: CGPoint(x: -halfW + 110, y: bottomY))
         leftButton.name = "leftButton"
         cam.addChild(leftButton)
 
-        rightButton = makeButton(label: "▶", position: CGPoint(x: -size.width / 2 + 290, y: bottomY))
+        rightButton = makeButton(label: "▶", position: CGPoint(x: -halfW + 290, y: bottomY))
         rightButton.name = "rightButton"
         cam.addChild(rightButton)
 
-        attackButton = makeButton(label: "✦", position: CGPoint(x: size.width / 2 - 130, y: bottomY))
+        attackButton = makeButton(label: "✦", position: CGPoint(x: halfW - 130, y: bottomY))
         attackButton.name = "attackButton"
         cam.addChild(attackButton)
 
-        jumpButton = makeButton(label: "▲", position: CGPoint(x: size.width / 2 - 310, y: bottomY))
+        jumpButton = makeButton(label: "▲", position: CGPoint(x: halfW - 310, y: bottomY))
         jumpButton.name = "jumpButton"
         cam.addChild(jumpButton)
+
+        pauseButton = SKShapeNode(rectOf: CGSize(width: 70, height: 70), cornerRadius: 10)
+        pauseButton.name = "pauseButton"
+        pauseButton.fillColor = SKColor(white: 1.0, alpha: 0.25)
+        pauseButton.strokeColor = SKColor(white: 1.0, alpha: 0.6)
+        pauseButton.lineWidth = 2
+        pauseButton.position = CGPoint(x: halfW - 110, y: halfH - 60)
+        let pauseLabel = SKLabelNode(text: "II")
+        pauseLabel.fontName = "AvenirNext-Bold"
+        pauseLabel.fontSize = 36
+        pauseLabel.fontColor = .white
+        pauseLabel.verticalAlignmentMode = .center
+        pauseLabel.horizontalAlignmentMode = .center
+        pauseButton.addChild(pauseLabel)
+        cam.addChild(pauseButton)
+
+        healthHUD = HealthHUD()
+        healthHUD.position = CGPoint(
+            x: -halfW + 80,
+            y: halfH - 60
+        )
+        healthHUD.zPosition = 1000
+        cam.addChild(healthHUD)
+        healthHUD.setHealth(current: player.hitPoints, max: player.maxHitPoints)
     }
 
     private static let buttonRadius: CGFloat = 80
@@ -149,9 +433,55 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Touch handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isPaused_ {
+            for touch in touches {
+                guard let overlay = pauseOverlay else { return }
+                let location = touch.location(in: overlay)
+                if let resume = overlay.childNode(withName: "resumeButton") as? SKShapeNode,
+                   resume.contains(location) {
+                    resumeGame()
+                    return
+                }
+                if let restart = overlay.childNode(withName: "restartButton") as? SKShapeNode,
+                   restart.contains(location) {
+                    resumeGame()
+                    restartLevel()
+                    return
+                }
+                if let menu = overlay.childNode(withName: "menuButton") as? SKShapeNode,
+                   menu.contains(location) {
+                    goToMainMenu()
+                    return
+                }
+            }
+            return
+        }
+        if isGameOver {
+            for touch in touches {
+                guard let overlay = gameOverOverlay else { return }
+                let location = touch.location(in: overlay)
+                if let restart = overlay.childNode(withName: "restartButton") as? SKShapeNode,
+                   restart.contains(location) {
+                    restartLevel()
+                    return
+                }
+                if let menu = overlay.childNode(withName: "menuButton") as? SKShapeNode,
+                   menu.contains(location) {
+                    goToMainMenu()
+                    return
+                }
+            }
+            return
+        }
         for touch in touches {
             guard let cam = camera else { return }
             let location = touch.location(in: cam)
+
+            if pauseButton.contains(location) {
+                pauseGame()
+                return
+            }
+
             let buttonName = hudButtonHit(at: location)
 
             switch buttonName {
@@ -163,6 +493,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 player.startMoving(direction: 1)
             case "jumpButton":
                 player.jump()
+            case "attackButton":
+                if let hitbox = player.performAttack() {
+                    addChild(hitbox)
+                }
             default:
                 break
             }
@@ -193,10 +527,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdateTime == 0 ? 0 : currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
+        if isGameOver || isPaused_ { return }
+
         player.update(deltaTime: dt)
+        for enemy in enemies { enemy.update(deltaTime: dt) }
+        if damageCooldown > 0 { damageCooldown -= dt }
 
         if let cam = camera {
-            cam.position = CGPoint(x: player.position.x, y: max(player.position.y, size.height / 2))
+            let halfVisW = visibleSize.width * GameScene.cameraZoom / 2
+            let halfVisH = visibleSize.height * GameScene.cameraZoom / 2
+            let minCamX = worldMinX + halfVisW
+            let maxCamX = worldMaxX - halfVisW
+            let clampedX = min(max(player.position.x, minCamX), maxCamX)
+            cam.position = CGPoint(x: clampedX, y: max(player.position.y, halfVisH))
         }
     }
 
@@ -211,6 +554,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if let playerNode = playerBody.node, let platformNode = otherBody.node,
                playerNode.position.y > platformNode.position.y {
                 player.didBeginContactWithPlatform()
+            }
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.enemy) {
+            if damageCooldown <= 0 {
+                let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy ? contact.bodyA : contact.bodyB
+                let knockbackDir: CGFloat = {
+                    if let enemyNode = enemyBody.node {
+                        return player.position.x >= enemyNode.position.x ? 1 : -1
+                    }
+                    return player.facingRight ? -1 : 1
+                }()
+                player.applyHitKnockback(direction: knockbackDir)
+                player.takeDamage()
+                flashDamageVignette()
+                damageCooldown = 1.0
+            }
+        } else if mask == (PhysicsCategory.projectile | PhysicsCategory.enemy) {
+            let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy ? contact.bodyA : contact.bodyB
+            if let enemy = enemyBody.node as? EnemyNode {
+                enemy.takeDamage()
             }
         }
     }
