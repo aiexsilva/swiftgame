@@ -30,6 +30,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var pauseOverlay: SKNode?
     private var pauseButton: SKShapeNode!
     private var damageVignette: SKShapeNode?
+    private var staff: StaffNode!
     private let playerSpawn = CGPoint(x: 120, y: 200)
 
     private struct EnemySpawn {
@@ -145,6 +146,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if current <= 0 { self?.triggerGameOver() }
         }
         addChild(player)
+
+        staff = StaffNode()
+        staff.position = player.position
+        addChild(staff)
     }
 
     private func setupWorldBounds() {
@@ -170,7 +175,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupEnemies() {
         // Level enemy roster — edit here to design the level.
         enemySpawns = [
-            EnemySpawn(minX: size.width * 0.40, maxX: size.width * 0.70, y: 90),
+            EnemySpawn(minX: size.width * 0.40, maxX: size.width * 0.70, y: 60),
         ]
         spawnEnemies()
     }
@@ -530,6 +535,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if isGameOver || isPaused_ { return }
 
         player.update(deltaTime: dt)
+        staff.update(deltaTime: dt, playerPosition: player.position, facingRight: player.facingRight)
+        staff.isHidden = player.isAttacking
         for enemy in enemies { enemy.update(deltaTime: dt) }
         if damageCooldown > 0 { damageCooldown -= dt }
 

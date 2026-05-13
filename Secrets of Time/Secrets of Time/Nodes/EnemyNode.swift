@@ -30,31 +30,43 @@ class EnemyNode: SKSpriteNode {
         }
     }
 
+    // MARK: - Sprite
+    private static let displaySize = CGSize(width: 48, height: 48)
+    /// Smaller than the sprite — the slime's actual collidable mass.
+    private static let bodySize = CGSize(width: 38, height: 28)
+    private static let slimeTextures: [SKTexture] = {
+        (1...7).map { i in
+            let t = SKTexture(imageNamed: "Artboard \(i)")
+            t.filteringMode = .nearest
+            return t
+        }
+    }()
+
     init(minX: CGFloat, maxX: CGFloat) {
         self.minX = min(minX, maxX)
         self.maxX = max(minX, maxX)
-        let size = CGSize(width: 40, height: 40)
-        let texture = EnemyNode.placeholderTexture(size: size, color: .systemRed)
-        super.init(texture: texture, color: .clear, size: size)
+        let texture = EnemyNode.slimeTextures.first ?? SKTexture()
+        super.init(texture: texture, color: .clear, size: EnemyNode.displaySize)
+        // Anchor at the visible base of the slime body
+        anchorPoint = CGPoint(x: 0.5, y: 0.25)
         name = "enemy"
         setupPhysics()
+        run(.repeatForever(.animate(
+            with: EnemyNode.slimeTextures,
+            timePerFrame: 0.12, resize: false, restore: false
+        )), withKey: "slimeAnim")
     }
 
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    private static func placeholderTexture(size: CGSize, color: SKColor) -> SKTexture {
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { ctx in
-            color.setFill()
-            ctx.fill(CGRect(origin: .zero, size: size))
-        }
-        return SKTexture(image: image)
-    }
-
     private func setupPhysics() {
-        let body = SKPhysicsBody(rectangleOf: size)
+        // Body bottom aligned with the sprite's bottom (node origin).
+        let body = SKPhysicsBody(
+            rectangleOf: EnemyNode.bodySize,
+            center: CGPoint(x: 0, y: EnemyNode.bodySize.height / 2)
+        )
         body.isDynamic = false
         body.allowsRotation = false
         body.restitution = 0.0
@@ -63,7 +75,20 @@ class EnemyNode: SKSpriteNode {
         body.collisionBitMask = PhysicsCategory.none
         body.contactTestBitMask = PhysicsCategory.player | PhysicsCategory.projectile
         physicsBody = body
+
+        if EnemyNode.showDebugHitbox {
+            let outline = SKShapeNode(rectOf: EnemyNode.bodySize)
+            outline.strokeColor = .red
+            outline.lineWidth = 1
+            outline.fillColor = .clear
+            outline.position = CGPoint(x: 0, y: EnemyNode.bodySize.height / 2)
+            outline.zPosition = 100
+            outline.name = "debugHitbox"
+            addChild(outline)
+        }
     }
+
+    static var showDebugHitbox: Bool = true
 
     func update(deltaTime: TimeInterval) {
         guard !isDead else { return }

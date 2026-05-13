@@ -65,8 +65,8 @@ class PlayerNode: SKSpriteNode {
     // MARK: - Attack
     private let attackDuration: TimeInterval = 0.15
     private let attackCooldown: TimeInterval = 0.35
-    private let attackReach: CGFloat = 100
-    private let attackHeight: CGFloat = 30
+    private let attackReach: CGFloat = 40
+    private let attackHeight: CGFloat = 80
     private var attackCooldownRemaining: TimeInterval = 0
 
     /// Spawns a short-lived hitbox in front of the player.
@@ -75,6 +75,7 @@ class PlayerNode: SKSpriteNode {
     func performAttack() -> SKNode? {
         guard attackCooldownRemaining <= 0 else { return nil }
         attackCooldownRemaining = attackCooldown
+        play(.attack)
 
         let hitboxSize = CGSize(width: attackReach, height: attackHeight)
         let hitbox = SKSpriteNode(color: SKColor(white: 1.0, alpha: 0.4), size: hitboxSize)
@@ -82,7 +83,7 @@ class PlayerNode: SKSpriteNode {
         let dir: CGFloat = facingRight ? 1 : -1
         hitbox.position = CGPoint(
             x: position.x + dir * (PlayerNode.bodySize.width / 2 + attackReach / 2),
-            y: position.y
+            y: position.y + PlayerNode.bodySize.height / 2
         )
 
         let body = SKPhysicsBody(rectangleOf: hitboxSize)
@@ -96,6 +97,14 @@ class PlayerNode: SKSpriteNode {
         body.collisionBitMask = PhysicsCategory.none
         body.contactTestBitMask = PhysicsCategory.enemy
         hitbox.physicsBody = body
+
+        if PlayerNode.showDebugHitbox {
+            let outline = SKShapeNode(rectOf: hitboxSize)
+            outline.strokeColor = .red
+            outline.lineWidth = 1
+            outline.fillColor = .clear
+            hitbox.addChild(outline)
+        }
 
         hitbox.run(.sequence([.wait(forDuration: attackDuration), .removeFromParent()]))
         return hitbox
@@ -124,6 +133,24 @@ class PlayerNode: SKSpriteNode {
             run(.animate(with: PlayerNode.risingTextures, timePerFrame: 0.08, resize: false, restore: false), withKey: PlayerNode.animKey)
         case .falling:
             run(.animate(with: PlayerNode.fallingTextures, timePerFrame: 0.08, resize: false, restore: false), withKey: PlayerNode.animKey)
+        case .attack:
+            // AttackWood sprites are 32x32 (vs 16x16 for idle/run) but the character
+            // fills less of the frame, so the on-screen character looks smaller at
+            // the same node size. Enlarge so the visible character matches idle scale.
+            let originalSize = size
+            // AttackWood is 32x32 vs 16x16 for idle/run, so render at 2x size to
+            // keep the same pixel-per-source ratio (otherwise the character
+            // appears shrunk to half scale).
+            let attackScale: CGFloat = 32.0 / 16.0
+            size = CGSize(width: PlayerNode.displaySize.width * attackScale,
+                          height: PlayerNode.displaySize.height * attackScale)
+            run(.sequence([
+                .animate(with: PlayerNode.attackTextures, timePerFrame: 0.06, resize: false, restore: false),
+                .run { [weak self] in
+                    self?.size = originalSize
+                    if self?.currentAnim == .attack { self?.currentAnim = nil }
+                }
+            ]), withKey: PlayerNode.animKey)
         case .hit:
             run(.animate(with: PlayerNode.hitTextures, timePerFrame: 0.06, resize: false, restore: false), withKey: PlayerNode.animKey)
         case .dying:
@@ -137,7 +164,8 @@ class PlayerNode: SKSpriteNode {
     }
 
     private func chooseLocomotionAnim() {
-        guard currentAnim != .hit, currentAnim != .dying, currentAnim != .dead else { return }
+        guard currentAnim != .attack, currentAnim != .hit,
+              currentAnim != .dying, currentAnim != .dead else { return }
         guard let body = physicsBody else { return }
         let vy = body.velocity.dy
         if !isGrounded {
@@ -155,7 +183,7 @@ class PlayerNode: SKSpriteNode {
 
     // MARK: - Animations
 
-    private enum AnimState { case idle, run, rising, falling, hit, dying, dead }
+    private enum AnimState { case idle, run, rising, falling, attack, hit, dying, dead }
     private var currentAnim: AnimState?
 
     private static let idleTextures: [SKTexture]    = loadTextures(prefix: "Idle", count: 6)
@@ -163,6 +191,7 @@ class PlayerNode: SKSpriteNode {
     private static let risingTextures: [SKTexture]  = loadTextures(prefix: "Rising", count: 6)
     private static let fallingTextures: [SKTexture] = loadTextures(prefix: "Falling", count: 6)
     private static let hitTextures: [SKTexture]     = loadTextures(prefix: "Hit", count: 3)
+    private static let attackTextures: [SKTexture]  = loadTextures(prefix: "AttackWood", count: 6)
     private static let dyingTextures: [SKTexture]   = loadTextures(prefix: "Dying", count: 6)
     private static let deadTexture: SKTexture       = {
         let t = SKTexture(imageNamed: "Dead")
@@ -186,9 +215,16 @@ class PlayerNode: SKSpriteNode {
     /// Physics body (centered on the sprite).
     private static let bodySize = CGSize(width: 40, height: 52)
 
+    /// True while the attack animation is playing (used by external nodes like the staff).
+    var isAttacking: Bool { currentAnim == .attack }
+
     init() {
         let texture = PlayerNode.idleTextures.first ?? SKTexture()
         super.init(texture: texture, color: .clear, size: PlayerNode.displaySize)
+        // Anchor at bottom-center: node.position.y = the player's feet, which
+        // is also the bottom of the hitbox. All other sprites in the game use
+        // the same convention so they line up with the ground.
+        anchorPoint = CGPoint(x: 0.5, y: 0.0)
         name = "player"
         setupPhysics()
         play(.idle)
@@ -199,8 +235,28 @@ class PlayerNode: SKSpriteNode {
         setupPhysics()
     }
 
+    /// Toggle to draw a red outline around the physics body for visual debugging.
+    static var showDebugHitbox: Bool = true
+
+    private func addDebugHitbox(size: CGSize, center: CGPoint = .zero) {
+        guard PlayerNode.showDebugHitbox else { return }
+        let outline = SKShapeNode(rectOf: size)
+        outline.strokeColor = .red
+        outline.lineWidth = 1
+        outline.fillColor = .clear
+        outline.position = center
+        outline.zPosition = 100
+        outline.name = "debugHitbox"
+        addChild(outline)
+    }
+
     private func setupPhysics() {
-        let body = SKPhysicsBody(rectangleOf: PlayerNode.bodySize)
+        // Body bottom at node origin (= sprite bottom = feet) so the hitbox
+        // aligns with the floor under the visible character.
+        let body = SKPhysicsBody(
+            rectangleOf: PlayerNode.bodySize,
+            center: CGPoint(x: 0, y: PlayerNode.bodySize.height / 2)
+        )
         body.allowsRotation = false
         body.restitution = 0.0
         body.friction = 0.0
@@ -210,6 +266,10 @@ class PlayerNode: SKSpriteNode {
         body.contactTestBitMask = PhysicsCategory.platform | PhysicsCategory.enemy
             | PhysicsCategory.artifact | PhysicsCategory.teleport
         physicsBody = body
+        addDebugHitbox(
+            size: PlayerNode.bodySize,
+            center: CGPoint(x: 0, y: PlayerNode.bodySize.height / 2)
+        )
     }
 
     // MARK: - Input API (called by GameScene from on-screen buttons)
