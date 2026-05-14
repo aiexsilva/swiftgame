@@ -68,6 +68,11 @@ class PlayerNode: SKSpriteNode {
     private let attackReach: CGFloat = 40
     private let attackHeight: CGFloat = 80
     private var attackCooldownRemaining: TimeInterval = 0
+    /// Active attack hitbox, tracked so its position can follow the player while alive.
+    private weak var activeAttackHitbox: SKNode?
+    /// Facing direction captured at the moment the attack started (so swinging
+    /// while turning doesn't flip the hitbox mid-swing).
+    private var attackFacingRight: Bool = true
 
     /// Spawns a short-lived hitbox in front of the player.
     /// Returns the node so the scene can add it as a child (kept in scene-space so
@@ -77,14 +82,11 @@ class PlayerNode: SKSpriteNode {
         attackCooldownRemaining = attackCooldown
         play(.attack)
 
+        attackFacingRight = facingRight
         let hitboxSize = CGSize(width: attackReach, height: attackHeight)
         let hitbox = SKSpriteNode(color: SKColor(white: 1.0, alpha: 0.4), size: hitboxSize)
         hitbox.name = "playerAttack"
-        let dir: CGFloat = facingRight ? 1 : -1
-        hitbox.position = CGPoint(
-            x: position.x + dir * (PlayerNode.bodySize.width / 2 + attackReach / 2),
-            y: position.y + PlayerNode.bodySize.height / 2
-        )
+        hitbox.position = attackHitboxPosition()
 
         let body = SKPhysicsBody(rectangleOf: hitboxSize)
         // Must be dynamic — two static bodies don't generate contact events.
@@ -106,8 +108,25 @@ class PlayerNode: SKSpriteNode {
             hitbox.addChild(outline)
         }
 
-        hitbox.run(.sequence([.wait(forDuration: attackDuration), .removeFromParent()]))
+        activeAttackHitbox = hitbox
+        hitbox.run(.sequence([
+            .wait(forDuration: attackDuration),
+            .run { [weak self, weak hitbox] in
+                if self?.activeAttackHitbox === hitbox { self?.activeAttackHitbox = nil }
+            },
+            .removeFromParent()
+        ]))
         return hitbox
+    }
+
+    /// Position the attack hitbox should occupy each frame: in front of the
+    /// player, anchored to the facing direction captured when the swing started.
+    private func attackHitboxPosition() -> CGPoint {
+        let dir: CGFloat = attackFacingRight ? 1 : -1
+        return CGPoint(
+            x: position.x + dir * (PlayerNode.bodySize.width / 2 + attackReach / 2),
+            y: position.y + PlayerNode.bodySize.height / 2
+        )
     }
 
     private func updateAttackCooldown(deltaTime: TimeInterval) {
@@ -124,6 +143,12 @@ class PlayerNode: SKSpriteNode {
         guard currentAnim != state else { return }
         currentAnim = state
         removeAction(forKey: PlayerNode.animKey)
+        // Any non-attack animation uses the standard display size. If we interrupt
+        // an attack mid-swing (e.g. takeDamage → .hit), the cleanup `.run` block
+        // never fires, so reset here to avoid the 2x scale leaking into other anims.
+        if state != .attack {
+            size = PlayerNode.displaySize
+        }
         switch state {
         case .idle:
             run(.repeatForever(.animate(with: PlayerNode.idleTextures, timePerFrame: 0.12, resize: false, restore: false)), withKey: PlayerNode.animKey)
@@ -295,6 +320,11 @@ class PlayerNode: SKSpriteNode {
 
     func update(deltaTime: TimeInterval) {
         updateAttackCooldown(deltaTime: deltaTime)
+        // Keep the active attack hitbox glued in front of the player so it
+        // follows when the player moves mid-swing.
+        if let hitbox = activeAttackHitbox {
+            hitbox.position = attackHitboxPosition()
+        }
         guard let body = physicsBody else { return }
 
         chooseLocomotionAnim()
