@@ -20,8 +20,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var healthHUD: HealthHUD!
     /// Currently alive enemies. Populated at level start, drained as enemies die.
     private var enemies: [EnemyNode] = []
-    /// Level configuration: where to spawn each enemy when the level (re)starts.
-    private var enemySpawns: [EnemySpawn] = []
+    /// Level configuration: factory closures that create a fresh, positioned
+    /// enemy each time the level (re)starts.
+    private var enemySpawns: [() -> EnemyNode] = []
     private var damageCooldown: TimeInterval = 0
 
     private var isGameOver: Bool = false
@@ -31,13 +32,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var pauseButton: SKShapeNode!
     private var damageVignette: SKShapeNode?
     private var staff: StaffNode!
+
+    // NPC & dialogue
+    private var npc: NPCNode?
+    private var dialogueBox: DialogueBox?
+    private var interactionDwellTime: TimeInterval = 0
+    /// Seconds the player must stand still inside the NPC's range to trigger dialogue.
+    private let interactionRequiredDwell: TimeInterval = 0.5
+    private var isInDialogue: Bool = false
+    /// After a dialogue closes, the player must leave the NPC's range before
+    /// another dialogue can be triggered. This flag tracks that "rearm" state.
+    private var npcReadyToTrigger: Bool = true
     private let playerSpawn = CGPoint(x: 120, y: 200)
 
-    private struct EnemySpawn {
-        let minX: CGFloat
-        let maxX: CGFloat
-        let y: CGFloat
-    }
 
     // World horizontal bounds. The camera stops scrolling when its edge hits these,
     // and physical walls prevent the player from leaving.
@@ -85,6 +92,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupPlatforms()
         setupPlayer()
         setupEnemies()
+        setupNPC()
         setupHUD()
     }
 
@@ -172,10 +180,59 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(wall)
     }
 
+    /// Places the level's single NPC. Edit this to change the NPC for a level —
+    /// pass the dialogue lines, a name and a portrait image (any PNG bundled in
+    /// the project, e.g. `face_normal`).
+    private func setupNPC() {
+        let n = NPCNode(
+            name: "Old Sage",
+            portraitImageName: "face_normal",
+            lines: [
+                "Olá, viajante. Há muito não via gente por estas bandas.",
+                "Cuidado com as criaturas que vagueiam pelas plataformas.",
+                "Boa sorte na tua jornada."
+            ]
+        )
+        n.position = CGPoint(x: size.width * 0.18, y: 60)
+        addChild(n)
+        npc = n
+    }
+
     private func setupEnemies() {
-        // Level enemy roster — edit here to design the level.
+        // Level enemy roster — each entry is a factory that builds and positions
+        // one enemy. Add / remove entries to design the level.
+        let groundY: CGFloat = 60
         enemySpawns = [
-            EnemySpawn(minX: size.width * 0.40, maxX: size.width * 0.70, y: 60),
+            // 1. Slime patrols on the ground.
+            { [unowned self] in
+                let e = SlimeEnemy(minX: size.width * 0.40, maxX: size.width * 0.70)
+                e.position = CGPoint(x: size.width * 0.40, y: groundY)
+                return e
+            },
+            // 2. Flyer patrols mid-air.
+            { [unowned self] in
+                let e = FlyerEnemy(minX: size.width * 0.30, maxX: size.width * 0.65)
+                e.position = CGPoint(x: size.width * 0.30, y: 260)
+                return e
+            },
+            // 3. Jumper hops 2 forward / 2 back.
+            { [unowned self] in
+                let e = JumperEnemy()
+                e.position = CGPoint(x: size.width * 0.85, y: groundY + 40)
+                return e
+            },
+            // 4. Chaser idles until the player gets close.
+            { [unowned self] in
+                let e = ChaserEnemy(detectRange: 260)
+                e.position = CGPoint(x: size.width * 1.20, y: groundY)
+                return e
+            },
+            // 5. Immortal hazard — slow and unkillable.
+            { [unowned self] in
+                let e = ImmortalEnemy(minX: size.width * 1.40, maxX: size.width * 1.70)
+                e.position = CGPoint(x: size.width * 1.40, y: groundY)
+                return e
+            },
         ]
         spawnEnemies()
     }
@@ -185,9 +242,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         for enemy in enemies { enemy.removeFromParent() }
         enemies.removeAll()
 
-        for spawn in enemySpawns {
-            let enemy = EnemyNode(minX: spawn.minX, maxX: spawn.maxX)
-            enemy.position = CGPoint(x: spawn.minX, y: spawn.y)
+        for makeEnemy in enemySpawns {
+            let enemy = makeEnemy()
             enemy.onDeath = { [weak self] dead in
                 self?.enemies.removeAll { $0 === dead }
             }
@@ -272,6 +328,48 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         text.verticalAlignmentMode = .center
         button.addChild(text)
         return button
+    }
+
+    // MARK: - NPC interaction
+
+    private func updateNPCInteraction(deltaTime: TimeInterval) {
+        guard let npc = npc, !isInDialogue else { return }
+        let dx = player.position.x - npc.position.x
+        let inRange = abs(dx) <= npc.interactionRange
+
+        // Re-arm once the player walks out of range.
+        if !inRange { npcReadyToTrigger = true }
+
+        let stopped = abs(player.physicsBody?.velocity.dx ?? 0) < 5
+        if inRange && stopped && npcReadyToTrigger {
+            interactionDwellTime += deltaTime
+            if interactionDwellTime >= interactionRequiredDwell {
+                openDialogue(with: npc)
+            }
+        } else {
+            interactionDwellTime = 0
+        }
+    }
+
+    private func openDialogue(with npc: NPCNode) {
+        guard let cam = camera, !isInDialogue else { return }
+        isInDialogue = true
+        interactionDwellTime = 0
+        player.stopMoving()
+        leftTouch = nil
+        rightTouch = nil
+
+        let box = DialogueBox(visibleSize: visibleSize)
+        box.show(name: npc.displayName, portraitImageName: npc.portraitImageName, lines: npc.lines)
+        box.onClose = { [weak self] in
+            self?.dialogueBox = nil
+            self?.isInDialogue = false
+            // Block re-triggering until the player leaves the NPC's range.
+            self?.npcReadyToTrigger = false
+            self?.lastUpdateTime = 0   // avoid dt spike
+        }
+        cam.addChild(box)
+        dialogueBox = box
     }
 
     private func pauseGame() {
@@ -438,6 +536,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Touch handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isInDialogue {
+            // Any tap advances the dialogue.
+            dialogueBox?.advance()
+            return
+        }
         if isPaused_ {
             for touch in touches {
                 guard let overlay = pauseOverlay else { return }
@@ -532,13 +635,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdateTime == 0 ? 0 : currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
-        if isGameOver || isPaused_ { return }
+        if isGameOver || isPaused_ || isInDialogue { return }
 
         player.update(deltaTime: dt)
         staff.update(deltaTime: dt, playerPosition: player.position, facingRight: player.facingRight)
         staff.isHidden = player.isAttacking
-        for enemy in enemies { enemy.update(deltaTime: dt) }
+        for enemy in enemies { enemy.update(deltaTime: dt, playerPosition: player.position) }
         if damageCooldown > 0 { damageCooldown -= dt }
+        updateNPCInteraction(deltaTime: dt)
 
         if let cam = camera {
             let halfVisW = visibleSize.width * GameScene.cameraZoom / 2
