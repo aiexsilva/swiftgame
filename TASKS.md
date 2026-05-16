@@ -32,19 +32,19 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 - [x] 2.2 Movimento horizontal (esquerda/direita) com velocidade constante
 - [x] 2.3 Salto (impulso vertical único)
 - [x] 2.4 Detecção de "grounded" via `SKPhysicsContactDelegate`
-- [ ] 2.5 Bloquear duplo-salto enquanto não está no chão
-- [ ] 2.6 Direção do sprite (faceLeft/faceRight)
+- [x] 2.5 Bloquear duplo-salto enquanto não está no chão
+- [x] 2.6 Direção do sprite (faceLeft/faceRight)
 - [x] 2.7 Limite de velocidade máxima
-- [ ] 2.8 Sistema de vida do player (HP) + invulnerabilidade temporária após dano
-- [ ] 2.9 Estado de morte (animação/feedback + trigger game over)
+- [x] 2.8 Sistema de vida do player (HP) + invulnerabilidade temporária após dano
+- [x] 2.9 Estado de morte (animação/feedback + trigger game over)
 
 ---
 
 ## 3. Cena base de jogo + plataformas 🔴 (B)
 
-- [ ] Plataformas estáticas (`SKSpriteNode` + physics static)
-- [ ] Câmara (`SKCameraNode`) a seguir o player
-- [ ] Clamp da câmara aos limites do nível
+- [x] Plataformas estáticas (`SKSpriteNode` + physics static)
+- [x] Câmara (`SKCameraNode`) a seguir o player
+- [x] Clamp da câmara aos limites do nível
 - [x] Gravidade do mundo configurada
 - [ ] Background placeholder por estação
 - [ ] Parallax simples no background 🟡
@@ -56,22 +56,21 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 - [x] D-pad esquerda/direita
 - [x] Botão de salto
 - [x] Botão de tiro
-- [ ] Camada HUD fixa (filho da câmara)
+- [x] Camada HUD fixa (filho da câmara)
 - [x] Suporte multi-touch (mover e saltar ou disparar em simultâneo)
 
 ---
 
 ## 5. Sistema de combate 🔴 (A)
 
-- [ ] 5.1 `ProjectileNode.swift` — sprite + physics + `SKAction` de movimento
-- [ ] 5.2 Disparo a partir do player com cooldown
-- [ ] 5.3 Remoção do projétil ao sair do ecrã
-- [ ] 5.4 `EnemyNode.swift` base — patrulha entre dois pontos
-- [ ] 5.5 Contacto Projectile↔Enemy → remover ambos + score
-- [ ] 5.6 Contacto Player↔Enemy → dano ao player
-- [ ] 5.7 Inimigo tipo 2 — saltador (introduzido no nível 3) 🟡
-- [ ] 5.8 Inimigo tipo 3 — voador (nível 4 ou 5) 🟡
-- [ ] 5.9 Inimigo tipo 4 — atirador (nível 4) 🟡
+- [x] 5.1 `ProjectileNode.swift` — sprite + physics + `SKAction` de movimento
+- [x] 5.2 Ataque a partir do player com cooldown
+- [x] 5.3 `EnemyNode.swift` base — patrulha entre dois pontos
+- [x] 5.4 Contacto Ataque↔Enemy → remover ambos
+- [x] 5.5 Contacto Player↔Enemy → dano ao player
+- [x] 5.6 Inimigo tipo 2 — saltador (introduzido no nível 3) 🟡
+- [x] 5.7 Inimigo tipo 3 — voador (nível 4 ou 5) 🟡
+- [ ] 5.8 Inimigo tipo 4 — atirador (nível 4) 🟡
 
 ---
 
@@ -90,16 +89,16 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 
 - [ ] Label de score
 - [ ] Barra de progresso do threshold
-- [ ] Indicador de vida do player
+- [x] Indicador de vida do player
 - [ ] Indicador "teleporte ativo"
-- [ ] Botão de pausa + menu de pausa 🟡
+- [x] Botão de pausa + menu de pausa 🟡
 
 ---
 
 ## 8. Cenas e fluxo 🔴 (C)
 
-- [ ] `MenuScene.swift` — botão Play, título do jogo
-- [ ] `GameOverScene.swift` — Win/Lose, botões Retry e Menu
+- [x] `MenuScene.swift` — botão Play, título do jogo
+- [x] `GameOverScene.swift` — Win/Lose, botões Retry e Menu
 - [ ] `LevelSelectScene.swift` — escolher nível desbloqueado 🟡
 - [ ] Transições com `SKTransition` entre cenas
 - [ ] Ecrã de créditos 🟢
@@ -185,7 +184,7 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 
 ## 12. Polish & QA 🟡 (—)
 
-- [ ] Testar colisões em isolamento
+- [x] Testar colisões em isolamento
 - [ ] Playtesting de cada nível + ajuste de thresholds
 - [ ] Bugfixing
 - [ ] Verificar performance em dispositivo real
