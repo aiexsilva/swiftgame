@@ -10,7 +10,7 @@ class SlimeEnemy: EnemyNode {
 
     private static let textures: [SKTexture] = {
         (1...7).map { i in
-            let t = SKTexture(imageNamed: "Artboard \(i)")
+            let t = SKTexture(imageNamed: "SlimeWalk\(i)")
             t.filteringMode = .nearest
             return t
         }

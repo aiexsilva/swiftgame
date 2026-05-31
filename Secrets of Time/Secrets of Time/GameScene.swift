@@ -111,14 +111,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         ground.fillColor = SKColor(red: 0.30, green: 0.55, blue: 0.20, alpha: 1.0)
         ground.strokeColor = .clear
         ground.position = CGPoint(x: size.width / 2, y: 40)
-        ground.name = "platform"
+        ground.name = "ground"
 
         let body = SKPhysicsBody(rectangleOf: CGSize(width: size.width * 3, height: 40))
         body.isDynamic = false
         body.friction = 0.0
-        body.categoryBitMask = PhysicsCategory.platform
-        body.collisionBitMask = PhysicsCategory.player
-        body.contactTestBitMask = PhysicsCategory.player
+        body.categoryBitMask = PhysicsCategory.ground
+        body.collisionBitMask = PhysicsCategory.player | PhysicsCategory.enemy
+        body.contactTestBitMask = PhysicsCategory.player | PhysicsCategory.enemy
         ground.physicsBody = body
         addChild(ground)
     }
@@ -231,6 +231,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             { [unowned self] in
                 let e = ImmortalEnemy(minX: size.width * 1.40, maxX: size.width * 1.70)
                 e.position = CGPoint(x: size.width * 1.40, y: groundY)
+                return e
+            },
+            // 6. Flower pot trap — hovers above the middle platform, drops
+            // when the player walks across it.
+            { [unowned self] in
+                let e = FlowerPotEnemy()
+                // Middle platform is at (size.width * 0.55, 320). Place the
+                // pot directly above it with enough clearance for the player.
+                e.position = CGPoint(x: size.width * 0.55, y: 330)
                 return e
             },
         ]
@@ -658,13 +667,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     func didBegin(_ contact: SKPhysicsContact) {
         let mask = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
-        if mask == (PhysicsCategory.player | PhysicsCategory.platform) {
-            // Only count as "ground" if the player is landing on top of the platform
+        if mask == (PhysicsCategory.player | PhysicsCategory.platform)
+            || mask == (PhysicsCategory.player | PhysicsCategory.ground) {
+            // Only count as "ground" if the player is landing on top of it
             let playerBody = contact.bodyA.categoryBitMask == PhysicsCategory.player ? contact.bodyA : contact.bodyB
             let otherBody  = contact.bodyA.categoryBitMask == PhysicsCategory.player ? contact.bodyB : contact.bodyA
             if let playerNode = playerBody.node, let platformNode = otherBody.node,
                playerNode.position.y > platformNode.position.y {
                 player.didBeginContactWithPlatform()
+            }
+        } else if mask == (PhysicsCategory.enemy | PhysicsCategory.ground) {
+            // A flower pot (or other dropping enemy) hits the floor → land it.
+            let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy ? contact.bodyA : contact.bodyB
+            if let pot = enemyBody.node as? FlowerPotEnemy {
+                pot.land()
             }
         } else if mask == (PhysicsCategory.player | PhysicsCategory.enemy) {
             if damageCooldown <= 0 {
@@ -690,7 +706,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     func didEnd(_ contact: SKPhysicsContact) {
         let mask = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
-        if mask == (PhysicsCategory.player | PhysicsCategory.platform) {
+        if mask == (PhysicsCategory.player | PhysicsCategory.platform)
+            || mask == (PhysicsCategory.player | PhysicsCategory.ground) {
             player.didEndContactWithPlatform()
         }
     }

@@ -62,7 +62,9 @@ class EnemyNode: SKSpriteNode {
         body.restitution = 0
         body.friction = 0
         body.categoryBitMask = PhysicsCategory.enemy
-        body.collisionBitMask = isAffectedByGravity ? PhysicsCategory.platform : PhysicsCategory.none
+        body.collisionBitMask = isAffectedByGravity
+            ? (PhysicsCategory.platform | PhysicsCategory.ground)
+            : PhysicsCategory.none
         body.contactTestBitMask = PhysicsCategory.player | PhysicsCategory.projectile
         physicsBody = body
 
@@ -81,25 +83,41 @@ class EnemyNode: SKSpriteNode {
     // MARK: - Damage
     func takeDamage(_ amount: Int = 1) {
         guard !isDead else { return }
-        if isImmortal {
-            // Visual feedback only.
-            run(.sequence([
-                .colorize(with: .white, colorBlendFactor: 0.4, duration: 0.05),
-                .colorize(withColorBlendFactor: 0.0, duration: 0.1)
-            ]))
-            return
-        }
+
+        // Shared hit feedback (red tint + shake) — runs in parallel with
+        // whatever animation/movement the subclass is doing.
+        playDamageFeedback()
+
+        if isImmortal { return }
+
         hitPoints -= amount
-        run(.sequence([
-            .colorize(with: .white, colorBlendFactor: 0.8, duration: 0.05),
-            .colorize(withColorBlendFactor: 0.0, duration: 0.1)
-        ]))
         if hitPoints <= 0 {
             isDead = true
             physicsBody = nil
             onDeath?(self)
             run(.sequence([.fadeOut(withDuration: 0.15), .removeFromParent()]))
         }
+    }
+
+    private func playDamageFeedback() {
+        // Red tint at 25% blend, fades back to no tint.
+        let tint = SKAction.sequence([
+            .colorize(with: .red, colorBlendFactor: 0.25, duration: 0.04),
+            .colorize(withColorBlendFactor: 0.0, duration: 0.18)
+        ])
+        run(tint, withKey: "damageTint")
+
+        // Quick rotational wobble. Uses rotation (not position) so it doesn't
+        // fight subclasses that drive `position` directly each frame.
+        let amp: CGFloat = 0.18   // radians
+        let shake = SKAction.sequence([
+            .rotate(byAngle: amp, duration: 0.04),
+            .rotate(byAngle: -amp * 2, duration: 0.06),
+            .rotate(byAngle: amp * 2, duration: 0.06),
+            .rotate(byAngle: -amp, duration: 0.04),
+            .rotate(toAngle: 0, duration: 0.02, shortestUnitArc: true)
+        ])
+        run(shake, withKey: "damageShake")
     }
 
     // MARK: - Behavior

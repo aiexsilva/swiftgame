@@ -288,9 +288,10 @@ class PlayerNode: SKSpriteNode {
         body.friction = 0.0
         body.linearDamping = 0.0
         body.categoryBitMask = PhysicsCategory.player
-        body.collisionBitMask = PhysicsCategory.platform | PhysicsCategory.enemy | PhysicsCategory.wall
-        body.contactTestBitMask = PhysicsCategory.platform | PhysicsCategory.enemy
-            | PhysicsCategory.artifact | PhysicsCategory.teleport
+        body.collisionBitMask = PhysicsCategory.platform | PhysicsCategory.ground
+            | PhysicsCategory.enemy | PhysicsCategory.wall
+        body.contactTestBitMask = PhysicsCategory.platform | PhysicsCategory.ground
+            | PhysicsCategory.enemy | PhysicsCategory.artifact | PhysicsCategory.teleport
         physicsBody = body
         addDebugHitbox(
             size: PlayerNode.bodySize,
