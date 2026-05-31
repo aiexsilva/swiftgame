@@ -8,12 +8,15 @@ class HealthHUD: SKNode {
     private let spacing: CGFloat = 8
     private var squares: [SKShapeNode] = []
 
+    private let filledColor = SKColor(red: 0.90, green: 0.20, blue: 0.25, alpha: 1.0)
+    private let emptyColor  = SKColor(white: 0.25, alpha: 0.6)
+
     func build(maxHitPoints: Int) {
         removeAllChildren()
         squares.removeAll()
         for i in 0..<maxHitPoints {
             let s = SKShapeNode(rectOf: CGSize(width: squareSize, height: squareSize), cornerRadius: 4)
-            s.fillColor = SKColor(red: 0.90, green: 0.20, blue: 0.25, alpha: 1.0)
+            s.fillColor = filledColor
             s.strokeColor = SKColor(white: 1.0, alpha: 0.85)
             s.lineWidth = 2
             s.position = CGPoint(x: CGFloat(i) * (squareSize + spacing), y: 0)
@@ -25,7 +28,9 @@ class HealthHUD: SKNode {
     func setHealth(current: Int, max maxHP: Int) {
         if squares.count != maxHP { build(maxHitPoints: maxHP) }
         for (i, square) in squares.enumerated() {
-            square.isHidden = i >= current
+            // Keep all slots visible — lost HP just turns grey.
+            square.isHidden = false
+            square.fillColor = i < current ? filledColor : emptyColor
         }
     }
 }

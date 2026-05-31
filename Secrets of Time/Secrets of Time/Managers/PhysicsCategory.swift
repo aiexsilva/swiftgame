@@ -10,5 +10,7 @@ struct PhysicsCategory {
     static let teleport:   UInt32 = 0b100000   // 32
     static let wall:       UInt32 = 0b1000000  // 64 (world boundary, blocks player but is not "ground")
     static let ground:     UInt32 = 0b10000000 // 128 (the main floor — distinct from platforms)
+    static let collectible:UInt32 = 0b100000000 // 256
+    static let portal:     UInt32 = 0b1000000000 // 512
     static let all:        UInt32 = UInt32.max
 }

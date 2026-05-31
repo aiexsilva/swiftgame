@@ -3,7 +3,7 @@ import SpriteKit
 /// Snake enemy that stays idle until the player enters its detection range,
 /// then chases the player horizontally. Plays an idle animation while
 /// waiting, a walk animation while chasing, and a death frame when killed.
-class ChaserEnemy: EnemyNode {
+class SnakeEnemy: EnemyNode {
 
     private let chaseSpeed: CGFloat = 130
     let detectRange: CGFloat
@@ -41,9 +41,9 @@ class ChaserEnemy: EnemyNode {
     init(detectRange: CGFloat = 260) {
         self.detectRange = detectRange
         super.init(
-            texture: ChaserEnemy.idleTextures.first ?? SKTexture(),
-            displaySize: CGSize(width: 16 * ChaserEnemy.pixelScale,
-                                height: 16 * ChaserEnemy.pixelScale),
+            texture: SnakeEnemy.idleTextures.first ?? SKTexture(),
+            displaySize: CGSize(width: 16 * SnakeEnemy.pixelScale,
+                                height: 16 * SnakeEnemy.pixelScale),
             bodySize: CGSize(width: 44, height: 28),
             bodyCenterY: 14,
             anchorY: 0,
@@ -65,7 +65,7 @@ class ChaserEnemy: EnemyNode {
     /// the snake suddenly looking smaller.
     private func makeFrameSequence(_ textures: [SKTexture],
                                    timePerFrame: TimeInterval) -> SKAction {
-        let pxScale = ChaserEnemy.pixelScale
+        let pxScale = SnakeEnemy.pixelScale
         let steps: [SKAction] = textures.flatMap { tex -> [SKAction] in
             let src = tex.size()
             let target = CGSize(width: src.width * pxScale,
@@ -87,11 +87,11 @@ class ChaserEnemy: EnemyNode {
         removeAction(forKey: "snakeAnim")
         switch state {
         case .idle:
-            run(.repeatForever(makeFrameSequence(ChaserEnemy.idleTextures,
+            run(.repeatForever(makeFrameSequence(SnakeEnemy.idleTextures,
                                                  timePerFrame: 0.22)),
                 withKey: "snakeAnim")
         case .walk:
-            run(.repeatForever(makeFrameSequence(ChaserEnemy.walkTextures,
+            run(.repeatForever(makeFrameSequence(SnakeEnemy.walkTextures,
                                                  timePerFrame: 0.14)),
                 withKey: "snakeAnim")
         }
@@ -120,12 +120,12 @@ class ChaserEnemy: EnemyNode {
         removeAction(forKey: "snakeAnim")
         // Use the same scaling rule so the death frame stays the same on-screen
         // size as the rest of the animations.
-        let src = ChaserEnemy.deathTexture.size()
-        let target = CGSize(width: src.width * ChaserEnemy.pixelScale,
-                            height: src.height * ChaserEnemy.pixelScale)
+        let src = SnakeEnemy.deathTexture.size()
+        let target = CGSize(width: src.width * SnakeEnemy.pixelScale,
+                            height: src.height * SnakeEnemy.pixelScale)
         return .run { [weak self] in
             self?.size = target
-            self?.texture = ChaserEnemy.deathTexture
+            self?.texture = SnakeEnemy.deathTexture
         }
     }
 }

@@ -17,7 +17,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var rightButton: SKShapeNode!
     private var jumpButton: SKShapeNode!
     private var attackButton: SKShapeNode!
-    private var healthHUD: HealthHUD!
+    private var healthHUD: HealthHUD?
     /// Currently alive enemies. Populated at level start, drained as enemies die.
     private var enemies: [EnemyNode] = []
     /// Level configuration: factory closures that create a fresh, positioned
@@ -26,12 +26,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var damageCooldown: TimeInterval = 0
 
     private var isGameOver: Bool = false
+    /// Becomes true once the player has hit the ground after dying and the
+    /// game-over overlay has been shown. Until then, physics keeps running
+    /// so the corpse falls naturally.
+    private var isShowingGameOverOverlay: Bool = false
     private var gameOverOverlay: SKNode?
     private var isPaused_: Bool = false
     private var pauseOverlay: SKNode?
     private var pauseButton: SKShapeNode!
     private var damageVignette: SKShapeNode?
     private var staff: StaffNode!
+
+    // Level configuration
+    /// 1 = base level (enemies, NPC, collectibles, portal). 2+ = empty placeholder.
+    /// Assign before `didMove(to:)` runs.
+    var levelIndex: Int = 1
+    /// Max HP the player starts the level with. Carried across portal transitions.
+    var startingMaxHP: Int = 2
+
+    // Collectibles & portal
+    private var collectibleHUD: CollectibleHUD?
+    private var collectibles: [CollectibleNode] = []
+    private var collectibleCount: Int = 0
+    private let requiredCollectibles: Int = 4
+    private var portal: PortalNode?
+    private var isPortalTransitioning: Bool = false
+    private var portalOverlay: PortalTransitionOverlay?
 
     // NPC & dialogue
     private var npc: NPCNode?
@@ -91,9 +111,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupWorldBounds()
         setupPlatforms()
         setupPlayer()
-        setupEnemies()
-        setupNPC()
+        if levelIndex == 1 {
+            setupEnemies()
+            setupNPC()
+            setupCollectibles()
+            setupPortal()
+        }
         setupHUD()
+        // Apply the level's starting max HP after the HUD exists, so the
+        // callback that updates the HUD doesn't crash on a nil reference.
+        player.setMaxHP(startingMaxHP)
     }
 
     private static let cameraZoom: CGFloat = 0.65  // <1 = zoom in
@@ -150,7 +177,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         player = PlayerNode()
         player.position = playerSpawn
         player.onHealthChanged = { [weak self] current, max in
-            self?.healthHUD.setHealth(current: current, max: max)
+            // healthHUD is created later in setupHUD; guard with optional chaining.
+            self?.healthHUD?.setHealth(current: current, max: max)
             if current <= 0 { self?.triggerGameOver() }
         }
         addChild(player)
@@ -223,7 +251,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             },
             // 4. Chaser idles until the player gets close.
             { [unowned self] in
-                let e = ChaserEnemy(detectRange: 260)
+                let e = SnakeEnemy(detectRange: 260)
                 e.position = CGPoint(x: size.width * 1.20, y: groundY)
                 return e
             },
@@ -244,6 +272,33 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             },
         ]
         spawnEnemies()
+    }
+
+    // MARK: - Collectibles & portal
+
+    private func setupCollectibles() {
+        // Spawn the level's 4 collectibles. Positions roughly correspond to
+        // the existing platforms (size.width * 0.30/0.55/0.80 at y=200/320/220)
+        // plus one on the ground further along.
+        let positions: [CGPoint] = [
+            CGPoint(x: size.width * 0.30, y: 224),
+            CGPoint(x: size.width * 0.55, y: 344),
+            CGPoint(x: size.width * 0.80, y: 244),
+            CGPoint(x: size.width * 1.30, y: 60),
+        ]
+        collectibles.removeAll()
+        for p in positions {
+            let c = CollectibleNode(at: p)
+            addChild(c)
+            collectibles.append(c)
+        }
+    }
+
+    private func setupPortal() {
+        let p = PortalNode(at: CGPoint(x: size.width * 1.85, y: 60))
+        p.setCounter(collected: collectibleCount, required: requiredCollectibles)
+        addChild(p)
+        portal = p
     }
 
     /// Removes any existing enemy nodes and spawns a fresh set from `enemySpawns`.
@@ -271,11 +326,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         player.stopMoving()
         player.resetHealth()
 
+        // Reset collectibles & portal (only present on level 1).
+        if levelIndex == 1 {
+            for c in collectibles { c.removeFromParent() }
+            collectibles.removeAll()
+            portal?.removeFromParent()
+            portal = nil
+            collectibleCount = 0
+            collectibleHUD?.setCount(0)
+            setupCollectibles()
+            setupPortal()
+        }
+
         // Clear damage cooldown & overlay
         damageCooldown = 0
         gameOverOverlay?.removeFromParent()
         gameOverOverlay = nil
         isGameOver = false
+        isShowingGameOverOverlay = false
+        removeAction(forKey: "gameOverFallback")
         physicsWorld.speed = 1
         lastUpdateTime = 0
         leftTouch = nil
@@ -285,6 +354,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func triggerGameOver() {
         guard !isGameOver else { return }
         isGameOver = true
+        player.stopMoving()
+        // Zero only the horizontal velocity so gravity can still pull the
+        // corpse down to the ground. The overlay is shown later, in update(_:),
+        // once the player has landed (or hit a hard timeout).
+        if let body = player.physicsBody {
+            body.velocity = CGVector(dx: 0, dy: body.velocity.dy)
+        }
+        // Hard fallback: if the player never lands (e.g. dies off-map), show
+        // the overlay after a few seconds regardless.
+        run(.sequence([
+            .wait(forDuration: 3.0),
+            .run { [weak self] in self?.presentGameOverIfNeeded() }
+        ]), withKey: "gameOverFallback")
+    }
+
+    private func presentGameOverIfNeeded() {
+        guard isGameOver, !isShowingGameOverOverlay else { return }
+        isShowingGameOverOverlay = true
+        removeAction(forKey: "gameOverFallback")
         player.stopMoving()
         player.physicsBody?.velocity = .zero
         physicsWorld.speed = 0
@@ -498,14 +586,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         pauseButton.addChild(pauseLabel)
         cam.addChild(pauseButton)
 
-        healthHUD = HealthHUD()
-        healthHUD.position = CGPoint(
+        let h = HealthHUD()
+        h.position = CGPoint(x: -halfW + 80, y: halfH - 60)
+        h.zPosition = 1000
+        cam.addChild(h)
+        h.setHealth(current: player.hitPoints, max: player.maxHitPoints)
+        healthHUD = h
+
+        let c = CollectibleHUD()
+        c.position = CGPoint(
             x: -halfW + 80,
-            y: halfH - 60
+            y: halfH - 100   // ~40 px below the health HUD
         )
-        healthHUD.zPosition = 1000
-        cam.addChild(healthHUD)
-        healthHUD.setHealth(current: player.hitPoints, max: player.maxHitPoints)
+        c.zPosition = 1000
+        cam.addChild(c)
+        c.build(maxCount: requiredCollectibles)
+        c.setCount(collectibleCount)
+        collectibleHUD = c
     }
 
     private static let buttonRadius: CGFloat = 80
@@ -545,6 +642,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Touch handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isPortalTransitioning {
+            // Swallow all input while the portal overlay is showing.
+            return
+        }
         if isInDialogue {
             // Any tap advances the dialogue.
             dialogueBox?.advance()
@@ -644,14 +745,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdateTime == 0 ? 0 : currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
-        if isGameOver || isPaused_ || isInDialogue { return }
+        if isPaused_ || isPortalTransitioning { return }
+        if isShowingGameOverOverlay { return }
 
+        // During dying (isGameOver == true, overlay not yet shown), we still
+        // let player physics and the camera run so the corpse falls naturally
+        // — but enemies, NPC interaction and dialogue logic stay paused.
         player.update(deltaTime: dt)
         staff.update(deltaTime: dt, playerPosition: player.position, facingRight: player.facingRight)
         staff.isHidden = player.isAttacking
-        for enemy in enemies { enemy.update(deltaTime: dt, playerPosition: player.position) }
-        if damageCooldown > 0 { damageCooldown -= dt }
-        updateNPCInteraction(deltaTime: dt)
+
+        if !isGameOver && !isInDialogue {
+            for enemy in enemies { enemy.update(deltaTime: dt, playerPosition: player.position) }
+            if damageCooldown > 0 { damageCooldown -= dt }
+            updateNPCInteraction(deltaTime: dt)
+        }
+
+        // Trigger the overlay once the dying player has touched the ground.
+        if isGameOver, !isShowingGameOverOverlay, player.isGrounded {
+            presentGameOverIfNeeded()
+        }
 
         if let cam = camera {
             let halfVisW = visibleSize.width * GameScene.cameraZoom / 2
@@ -701,7 +814,61 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if let enemy = enemyBody.node as? EnemyNode {
                 enemy.takeDamage()
             }
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.collectible) {
+            let pickupBody = contact.bodyA.categoryBitMask == PhysicsCategory.collectible ? contact.bodyA : contact.bodyB
+            if let pickup = pickupBody.node as? CollectibleNode {
+                handleCollect(pickup)
+            }
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.portal) {
+            if let p = portal, p.isUnlocked, !isPortalTransitioning {
+                triggerPortalTransition()
+            }
         }
+    }
+
+    // MARK: - Collectibles / portal handlers
+
+    private func handleCollect(_ pickup: CollectibleNode) {
+        // Avoid double-counting if SpriteKit fires the contact twice.
+        guard collectibles.contains(where: { $0 === pickup }) else { return }
+        collectibles.removeAll { $0 === pickup }
+        pickup.collect()
+        collectibleCount += 1
+        collectibleHUD?.setCount(collectibleCount)
+        portal?.setCounter(collected: collectibleCount, required: requiredCollectibles)
+        player.heal(1)
+        if collectibleCount >= requiredCollectibles {
+            portal?.isUnlocked = true
+        }
+    }
+
+    private func triggerPortalTransition() {
+        isPortalTransitioning = true
+        // Reward: +1 max HP carried into the next level.
+        player.increaseMaxHP(by: 1)
+        // Freeze gameplay while the overlay is up.
+        player.stopMoving()
+        player.physicsBody?.velocity = .zero
+        leftTouch = nil
+        rightTouch = nil
+        physicsWorld.speed = 0
+
+        guard let cam = camera else { return }
+        let overlay = PortalTransitionOverlay(visibleSize: visibleSize)
+        let nextMaxHP = player.maxHitPoints
+        let currentSize = size
+        let currentScaleMode = scaleMode
+        overlay.onComplete = { [weak self] in
+            guard let self = self, let view = self.view else { return }
+            let next = GameScene(size: currentSize)
+            next.scaleMode = currentScaleMode
+            next.levelIndex = self.levelIndex + 1
+            next.startingMaxHP = nextMaxHP
+            view.presentScene(next, transition: .fade(withDuration: 0.5))
+        }
+        cam.addChild(overlay)
+        portalOverlay = overlay
+        overlay.present()
     }
 
     func didEnd(_ contact: SKPhysicsContact) {

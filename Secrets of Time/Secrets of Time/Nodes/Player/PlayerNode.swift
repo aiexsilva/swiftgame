@@ -20,9 +20,26 @@ class PlayerNode: SKSpriteNode {
     private var groundContacts: Int = 0      // counts platform contacts
 
     // MARK: - Health
-    let maxHitPoints: Int = 3
-    private(set) var hitPoints: Int = 3
+    /// Maximum hit points. Mutable because the player gains +1 max HP every
+    /// time they go through a level portal.
+    private(set) var maxHitPoints: Int = 2
+    private(set) var hitPoints: Int = 2
     var onHealthChanged: ((_ current: Int, _ max: Int) -> Void)?
+
+    /// Sets max HP and refills current HP to that value. Used by the scene
+    /// to apply a level-carried starting max HP after init.
+    func setMaxHP(_ newMax: Int) {
+        maxHitPoints = max(1, newMax)
+        hitPoints = maxHitPoints
+        onHealthChanged?(hitPoints, maxHitPoints)
+    }
+
+    /// Permanently increases max HP and heals up to the new ceiling.
+    func increaseMaxHP(by amount: Int = 1) {
+        maxHitPoints += amount
+        hitPoints = maxHitPoints
+        onHealthChanged?(hitPoints, maxHitPoints)
+    }
 
     func takeDamage(_ amount: Int = 1) {
         guard hitPoints > 0 else { return }
@@ -292,6 +309,7 @@ class PlayerNode: SKSpriteNode {
             | PhysicsCategory.enemy | PhysicsCategory.wall
         body.contactTestBitMask = PhysicsCategory.platform | PhysicsCategory.ground
             | PhysicsCategory.enemy | PhysicsCategory.artifact | PhysicsCategory.teleport
+            | PhysicsCategory.collectible | PhysicsCategory.portal
         physicsBody = body
         addDebugHitbox(
             size: PlayerNode.bodySize,
