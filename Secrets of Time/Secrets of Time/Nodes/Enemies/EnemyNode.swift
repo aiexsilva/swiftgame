@@ -95,9 +95,25 @@ class EnemyNode: SKSpriteNode {
             isDead = true
             physicsBody = nil
             onDeath?(self)
-            run(.sequence([.fadeOut(withDuration: 0.15), .removeFromParent()]))
+            removeAction(forKey: "damageTint")
+            removeAction(forKey: "damageShake")
+            zRotation = 0
+            colorBlendFactor = 0
+            // Play the death animation, hold on the last frame for 3 seconds
+            // so the corpse stays visible, then fade out and despawn.
+            let deathAnim = deathAction() ?? SKAction.wait(forDuration: 0)
+            run(.sequence([
+                deathAnim,
+                .wait(forDuration: 3.0),
+                .fadeOut(withDuration: 0.5),
+                .removeFromParent()
+            ]))
         }
     }
+
+    /// Subclasses override to return an animation to play on death (e.g. a
+    /// frame-by-frame "splat"). Defaults to `nil` (no extra animation).
+    func deathAction() -> SKAction? { nil }
 
     private func playDamageFeedback() {
         // Red tint at 25% blend, fades back to no tint.

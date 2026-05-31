@@ -15,6 +15,19 @@ class SlimeEnemy: EnemyNode {
             return t
         }
     }()
+    private static let deathTextures: [SKTexture] = {
+        (1...4).map { i in
+            let t = SKTexture(imageNamed: "SlimeDeath\(i)")
+            t.filteringMode = .nearest
+            return t
+        }
+    }()
+
+    override func deathAction() -> SKAction? {
+        removeAction(forKey: "slimeAnim")
+        return .animate(with: SlimeEnemy.deathTextures,
+                        timePerFrame: 0.1, resize: false, restore: false)
+    }
 
     init(minX: CGFloat, maxX: CGFloat) {
         self.minX = min(minX, maxX)

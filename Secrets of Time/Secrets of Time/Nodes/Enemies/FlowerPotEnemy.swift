@@ -83,7 +83,15 @@ class FlowerPotEnemy: EnemyNode {
                 startFalling()
             }
 
-        case .falling, .landed:
+        case .falling:
+            // Refuse to "float": if any collision response slowed the pot, kick
+            // it downward again. Player has no entry in the pot's collisionBitMask,
+            // but this is belt-and-suspenders against weird physics interactions.
+            if let body = physicsBody, body.velocity.dy > -100 {
+                body.velocity = CGVector(dx: 0, dy: -350)
+            }
+
+        case .landed:
             break
         }
     }
@@ -118,8 +126,14 @@ class FlowerPotEnemy: EnemyNode {
         removeAction(forKey: "potAnim")
         if let last = FlowerPotEnemy.fallingTextures.last { texture = last }
 
-        // Stop physics interaction — no more damage to the player, but the
-        // sprite stays on screen as part of the level.
+        // Stop physics interaction — no more damage to the player.
         physicsBody = nil
+
+        // Hold the broken-pot frame for 3 seconds, then fade out and despawn.
+        run(.sequence([
+            .wait(forDuration: 3.0),
+            .fadeOut(withDuration: 0.5),
+            .removeFromParent()
+        ]))
     }
 }
