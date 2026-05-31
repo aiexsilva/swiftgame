@@ -1,36 +1,44 @@
- import SpriteKit
+import SpriteKit
 
-/// HUD that displays the player's hit points as small squares.
+/// HUD that displays the player's hit points as small heart icons.
 /// Add as child of the camera and call `setHealth(current:max:)` when HP changes.
 class HealthHUD: SKNode {
 
-    private let squareSize: CGFloat = 28
-    private let spacing: CGFloat = 8
-    private var squares: [SKShapeNode] = []
+    private let iconSize: CGFloat = 32
+    private let spacing: CGFloat = 4
+    private var hearts: [SKSpriteNode] = []
 
-    private let filledColor = SKColor(red: 0.90, green: 0.20, blue: 0.25, alpha: 1.0)
-    private let emptyColor  = SKColor(white: 0.25, alpha: 0.6)
+    private static let heartTexture: SKTexture = {
+        let t = SKTexture(imageNamed: "Heart")
+        t.filteringMode = .nearest   // crisp pixel art
+        return t
+    }()
 
     func build(maxHitPoints: Int) {
         removeAllChildren()
-        squares.removeAll()
+        hearts.removeAll()
         for i in 0..<maxHitPoints {
-            let s = SKShapeNode(rectOf: CGSize(width: squareSize, height: squareSize), cornerRadius: 4)
-            s.fillColor = filledColor
-            s.strokeColor = SKColor(white: 1.0, alpha: 0.85)
-            s.lineWidth = 2
-            s.position = CGPoint(x: CGFloat(i) * (squareSize + spacing), y: 0)
-            addChild(s)
-            squares.append(s)
+            let h = SKSpriteNode(texture: HealthHUD.heartTexture,
+                                 size: CGSize(width: iconSize, height: iconSize))
+            h.position = CGPoint(x: CGFloat(i) * (iconSize + spacing), y: 0)
+            addChild(h)
+            hearts.append(h)
         }
     }
 
     func setHealth(current: Int, max maxHP: Int) {
-        if squares.count != maxHP { build(maxHitPoints: maxHP) }
-        for (i, square) in squares.enumerated() {
-            // Keep all slots visible — lost HP just turns grey.
-            square.isHidden = false
-            square.fillColor = i < current ? filledColor : emptyColor
+        if hearts.count != maxHP { build(maxHitPoints: maxHP) }
+        for (i, heart) in hearts.enumerated() {
+            // Lost HP slots stay visible but turn grey-tinted.
+            heart.isHidden = false
+            if i < current {
+                heart.colorBlendFactor = 0
+                heart.alpha = 1.0
+            } else {
+                heart.color = .black
+                heart.colorBlendFactor = 0.75
+                heart.alpha = 0.5
+            }
         }
     }
 }

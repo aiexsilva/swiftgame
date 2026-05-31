@@ -1,52 +1,39 @@
 import SpriteKit
 
-/// HUD that displays how many collectibles the player has picked up, as a
-/// row of small yellow rounded squares (empty squares stay dim).
-/// Add as child of the camera and call `setCount(_:)` when one is collected.
+/// HUD that shows the puzzle pieces the player has picked up. Pieces appear
+/// (with a small pop-in) in the order they are collected, using the
+/// `PuzzleN.png` sprite art.
+/// Add as child of the camera and call `collect(pieceIndex:)` per pickup.
 final class CollectibleHUD: SKNode {
 
-    private let squareSize: CGFloat = 22
+    private let iconSize: CGFloat = 30
     private let spacing: CGFloat = 6
-    private var squares: [SKShapeNode] = []
+    private var pieces: [SKSpriteNode] = []
     private var maxSlots: Int = 0
 
-    private let filledColor = SKColor(red: 1.0, green: 0.85, blue: 0.25, alpha: 1.0)
-
-    /// Sets the maximum number of slots the row may grow to (used for layout
-    /// planning). Doesn't draw anything by itself — squares only appear via
-    /// `setCount(_:)` as the player collects.
+    /// Sets the planned max number of pieces. Doesn't draw anything by itself.
     func build(maxCount: Int) {
         removeAllChildren()
-        squares.removeAll()
+        pieces.removeAll()
         maxSlots = maxCount
     }
 
-    /// Shows exactly `count` filled yellow squares — new ones pop in with a
-    /// small scale as the player picks them up.
-    func setCount(_ count: Int) {
-        let target = min(max(count, 0), maxSlots > 0 ? maxSlots : count)
+    /// Adds the given piece to the row with a small pop-in animation.
+    func collect(pieceIndex: Int) {
+        guard maxSlots == 0 || pieces.count < maxSlots else { return }
+        let tex = CollectibleNode.texture(for: pieceIndex)
+        let icon = SKSpriteNode(texture: tex, size: CGSize(width: iconSize, height: iconSize))
+        let i = pieces.count
+        icon.position = CGPoint(x: CGFloat(i) * (iconSize + spacing), y: 0)
+        icon.setScale(0.0)
+        addChild(icon)
+        pieces.append(icon)
+        icon.run(.scale(to: 1.0, duration: 0.18))
+    }
 
-        // Grow: add any missing squares.
-        while squares.count < target {
-            let i = squares.count
-            let s = SKShapeNode(
-                rectOf: CGSize(width: squareSize, height: squareSize),
-                cornerRadius: 3
-            )
-            s.fillColor = filledColor
-            s.strokeColor = SKColor(white: 1.0, alpha: 0.7)
-            s.lineWidth = 1.5
-            s.position = CGPoint(x: CGFloat(i) * (squareSize + spacing), y: 0)
-            s.setScale(0.0)
-            addChild(s)
-            squares.append(s)
-            s.run(.scale(to: 1.0, duration: 0.18))
-        }
-
-        // Shrink: drop any extras (e.g. on restart with count 0).
-        while squares.count > target {
-            let s = squares.removeLast()
-            s.removeFromParent()
-        }
+    /// Clears the HUD (e.g. on level restart).
+    func reset() {
+        for p in pieces { p.removeFromParent() }
+        pieces.removeAll()
     }
 }

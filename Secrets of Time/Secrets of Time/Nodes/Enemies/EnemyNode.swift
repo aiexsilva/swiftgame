@@ -93,7 +93,17 @@ class EnemyNode: SKSpriteNode {
         hitPoints -= amount
         if hitPoints <= 0 {
             isDead = true
-            physicsBody = nil
+            // Turn the body into a falling corpse: gravity on, no more
+            // damage/contact with the player, only collides with the floor
+            // so it rests on the ground instead of floating in place.
+            if let body = physicsBody {
+                body.categoryBitMask = 0
+                body.contactTestBitMask = 0
+                body.collisionBitMask = PhysicsCategory.ground | PhysicsCategory.platform
+                body.isDynamic = true
+                body.affectedByGravity = true
+                body.velocity = .zero
+            }
             onDeath?(self)
             removeAction(forKey: "damageTint")
             removeAction(forKey: "damageShake")

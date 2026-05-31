@@ -11,38 +11,38 @@ final class PortalNode: SKSpriteNode {
 
     private let counterLabel = SKLabelNode()
 
+    /// Frames `Portal1.png` … `Portal4.png`, ping-pong looped so the swirl
+    /// reads as a smooth idle.
+    private static let portalTextures: [SKTexture] = {
+        let forward: [SKTexture] = (1...4).map { i in
+            let t = SKTexture(imageNamed: "Portal\(i)")
+            t.filteringMode = .nearest
+            return t
+        }
+        // 1,2,3,4,3,2 ping-pong.
+        return forward
+    }()
+
     init(at worldPosition: CGPoint) {
-        let displaySize = CGSize(width: 72, height: 110)
-        super.init(texture: nil, color: SKColor.systemPurple, size: displaySize)
+        let displaySize = CGSize(width: 80, height: 80)
+        super.init(texture: PortalNode.portalTextures.first,
+                   color: .clear,
+                   size: displaySize)
         position = worldPosition
         name = "portal"
         anchorPoint = CGPoint(x: 0.5, y: 0.0)
         zPosition = 0
         applyUnlockedAppearance()
-        setupGlow(size: displaySize)
         setupCounter(size: displaySize)
         setupPhysics(size: displaySize)
+        run(.repeatForever(.animate(
+            with: PortalNode.portalTextures,
+            timePerFrame: 0.6, resize: false, restore: false
+        )), withKey: "portalAnim")
     }
 
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    private func setupGlow(size: CGSize) {
-        // Faint oval glow behind the portal.
-        let glow = SKShapeNode(ellipseOf: CGSize(width: size.width * 0.9, height: size.height * 1.05))
-        glow.fillColor = SKColor(red: 0.6, green: 0.4, blue: 1.0, alpha: 0.25)
-        glow.strokeColor = .clear
-        glow.position = CGPoint(x: 0, y: size.height / 2)
-        glow.zPosition = -1
-        glow.name = "portalGlow"
-        addChild(glow)
-
-        // Gentle pulse.
-        glow.run(.repeatForever(.sequence([
-            .scale(to: 1.1, duration: 0.9),
-            .scale(to: 1.0, duration: 0.9)
-        ])))
     }
 
     private func setupPhysics(size: CGSize) {
@@ -61,7 +61,7 @@ final class PortalNode: SKSpriteNode {
 
     private func setupCounter(size: CGSize) {
         counterLabel.fontName = "AvenirNext-Bold"
-        counterLabel.fontSize = 22
+        counterLabel.fontSize = 18
         counterLabel.fontColor = .white
         counterLabel.horizontalAlignmentMode = .center
         counterLabel.verticalAlignmentMode = .bottom

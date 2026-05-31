@@ -287,8 +287,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             CGPoint(x: size.width * 1.30, y: 60),
         ]
         collectibles.removeAll()
-        for p in positions {
-            let c = CollectibleNode(at: p)
+        for (i, p) in positions.enumerated() {
+            let c = CollectibleNode(at: p, pieceIndex: i + 1)
             addChild(c)
             collectibles.append(c)
         }
@@ -333,7 +333,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             portal?.removeFromParent()
             portal = nil
             collectibleCount = 0
-            collectibleHUD?.setCount(0)
+            collectibleHUD?.reset()
             setupCollectibles()
             setupPortal()
         }
@@ -555,11 +555,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let halfH = visibleSize.height / 2
         let bottomY = -halfH + 140
 
-        leftButton = makeButton(label: "◀", position: CGPoint(x: -halfW + 110, y: bottomY))
+        // U+FE0E (VARIATION SELECTOR-15) forces the arrow glyphs to render in
+        // text style instead of color-emoji style, so left/right match the
+        // monochrome look of the jump triangle.
+        leftButton = makeButton(label: "◀\u{FE0E}", position: CGPoint(x: -halfW + 110, y: bottomY))
         leftButton.name = "leftButton"
         cam.addChild(leftButton)
 
-        rightButton = makeButton(label: "▶", position: CGPoint(x: -halfW + 290, y: bottomY))
+        rightButton = makeButton(label: "▶\u{FE0E}", position: CGPoint(x: -halfW + 290, y: bottomY))
         rightButton.name = "rightButton"
         cam.addChild(rightButton)
 
@@ -567,7 +570,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         attackButton.name = "attackButton"
         cam.addChild(attackButton)
 
-        jumpButton = makeButton(label: "▲", position: CGPoint(x: halfW - 310, y: bottomY))
+        jumpButton = makeButton(label: "▲\u{FE0E}", position: CGPoint(x: halfW - 310, y: bottomY))
         jumpButton.name = "jumpButton"
         cam.addChild(jumpButton)
 
@@ -601,7 +604,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         c.zPosition = 1000
         cam.addChild(c)
         c.build(maxCount: requiredCollectibles)
-        c.setCount(collectibleCount)
         collectibleHUD = c
     }
 
@@ -834,7 +836,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         collectibles.removeAll { $0 === pickup }
         pickup.collect()
         collectibleCount += 1
-        collectibleHUD?.setCount(collectibleCount)
+        collectibleHUD?.collect(pieceIndex: pickup.pieceIndex)
         portal?.setCounter(collected: collectibleCount, required: requiredCollectibles)
         player.heal(1)
         if collectibleCount >= requiredCollectibles {

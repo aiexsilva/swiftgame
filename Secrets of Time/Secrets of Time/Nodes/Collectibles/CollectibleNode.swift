@@ -1,30 +1,33 @@
 import SpriteKit
 
 /// Pickup that increments the collectible counter and heals the player when
-/// the player touches it. Placeholder visual — small yellow rounded square
-/// with a glow ring. Replace the texture later.
+/// the player touches it. Each instance corresponds to a unique puzzle piece
+/// (sprites `Puzzle1.png` … `Puzzle4.png`).
 final class CollectibleNode: SKSpriteNode {
 
-    init(at worldPosition: CGPoint) {
-        let displaySize = CGSize(width: 28, height: 28)
-        super.init(texture: nil, color: .systemYellow, size: displaySize)
+    /// Index of the puzzle piece this pickup represents (1-based).
+    let pieceIndex: Int
+
+    static func texture(for pieceIndex: Int) -> SKTexture {
+        let t = SKTexture(imageNamed: "Puzzle\(pieceIndex)")
+        t.filteringMode = .nearest
+        return t
+    }
+
+    init(at worldPosition: CGPoint, pieceIndex: Int) {
+        self.pieceIndex = pieceIndex
+        let displaySize = CGSize(width: 30, height: 30)
+        let tex = CollectibleNode.texture(for: pieceIndex)
+        super.init(texture: tex, color: .clear, size: displaySize)
         position = worldPosition
         name = "collectible"
         anchorPoint = CGPoint(x: 0.5, y: 0.0)
         zPosition = 1
 
-        // Soft glow ring behind the square.
-        let glow = SKShapeNode(circleOfRadius: 22)
-        glow.fillColor = SKColor(red: 1.0, green: 0.92, blue: 0.35, alpha: 0.25)
-        glow.strokeColor = .clear
-        glow.position = CGPoint(x: 0, y: displaySize.height / 2)
-        glow.zPosition = -1
-        addChild(glow)
-
         // Gentle bob so the pickup reads as interactive.
         let bob = SKAction.sequence([
-            .moveBy(x: 0, y: 4, duration: 0.6),
-            .moveBy(x: 0, y: -4, duration: 0.6)
+            .moveBy(x: 0, y: 4, duration: 0.8),
+            .moveBy(x: 0, y: -4, duration: 0.8)
         ])
         run(.repeatForever(bob))
 

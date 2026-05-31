@@ -76,18 +76,18 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 
 ## 6. Coletáveis e progressão 🔴 (B)
 
-- [ ] `ArtifactNode.swift` — coletável estático
-- [ ] `ScoreManager.swift` — score atual + threshold do nível
-- [ ] `LevelManager.swift` — config de cada nível e próximo nível
-- [ ] Teleporte aparece/ativa quando score ≥ threshold
-- [ ] Contacto Player↔Teleporte → transição para próximo nível
+- [x] `ArtifactNode.swift` — coletável estático
+- [x] `ScoreManager.swift` — score atual + threshold do nível
+- [x] `LevelManager.swift` — config de cada nível e próximo nível
+- [x] Teleporte aparece/ativa quando score ≥ threshold
+- [x] Contacto Player↔Teleporte → transição para próximo nível
 - [ ] Persistência de progresso entre níveis (qual o nível desbloqueado) 🟡
 
 ---
 
 ## 7. UI / HUD 🔴 (C)
 
-- [ ] Label de score
+- [x] Label de score
 - [ ] Barra de progresso do threshold
 - [x] Indicador de vida do player
 - [ ] Indicador "teleporte ativo"
@@ -171,11 +171,10 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 
 ## 11. Arte e animação 🟢 (—)
 
-- [ ] Sprite sheet do player com animações (idle, walk, jump, shoot, hit)
-- [ ] Sprite sheet de cada tipo de inimigo
-- [ ] Sprite do projétil com efeito visual
-- [ ] Sprite dos artefactos por estação
-- [ ] Sprite do teleporte com animação
+- [x] Sprite sheet do player com animações (idle, walk, jump, shoot, hit)
+- [ongoing] Sprite sheet de cada tipo de inimigo
+- [x] Sprite dos artefactos por estação
+- [x] Sprite do teleporte com animação
 - [ ] Sprite do boss
 - [ ] Tilesets por estação
 - [ ] Partículas (`SKEmitterNode`) para tiro, morte, teleporte
@@ -185,13 +184,12 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 ## 12. Polish & QA 🟡 (—)
 
 - [x] Testar colisões em isolamento
-- [ ] Playtesting de cada nível + ajuste de thresholds
-- [ ] Bugfixing
-- [ ] Verificar performance em dispositivo real
-- [ ] Verificar safe area em diferentes iPhones
+- [ongoing] Playtesting de cada nível + ajuste de thresholds
+- [ongoing] Bugfixing
+- [ongoing] Verificar performance em dispositivo real
 - [ ] Testar pausa/retoma da app (background → foreground)
 - [ ] Save/load entre sessões (UserDefaults) 🟡
-- [ ] Acessibilidade básica (tamanho de botões, contraste) 🟢
+- [x] Acessibilidade básica (tamanho de botões, contraste) 🟢
 
 ---
 
