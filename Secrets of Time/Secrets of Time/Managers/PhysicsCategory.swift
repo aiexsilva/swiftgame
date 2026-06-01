@@ -12,5 +12,8 @@ struct PhysicsCategory {
     static let ground:     UInt32 = 0b10000000 // 128 (the main floor — distinct from platforms)
     static let collectible:UInt32 = 0b100000000 // 256
     static let portal:     UInt32 = 0b1000000000 // 512
+    static let bossAttack: UInt32 = 0b10000000000   // 1024
+    static let barrier:    UInt32 = 0b100000000000  // 2048
+    static let bossBody:   UInt32 = 0b1000000000000 // 4096
     static let all:        UInt32 = UInt32.max
 }

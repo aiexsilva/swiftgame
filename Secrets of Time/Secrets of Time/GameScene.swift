@@ -53,6 +53,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var isPortalTransitioning: Bool = false
     private var portalOverlay: PortalTransitionOverlay?
 
+    // Boss arena (level 2)
+    private var boss: BossNode?
+    private var barrier: BarrierNode?
+    private var bossAI: BossAIController?
+    private var arenaCenterX: CGFloat = 0
+    private var arenaLockTriggerX: CGFloat = 0
+    private var isCameraLocked: Bool = false
+    private var isVictoryCinematic: Bool = false
+    private var isVictoryShown: Bool = false
+    private var winOverlay: SKNode?
+
     // NPC & dialogue
     private var npc: NPCNode?
     private var dialogueBox: DialogueBox?
@@ -109,13 +120,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupCamera()
         setupGround()
         setupWorldBounds()
-        setupPlatforms()
         setupPlayer()
         if levelIndex == 1 {
+            setupPlatforms()
             setupEnemies()
             setupNPC()
             setupCollectibles()
             setupPortal()
+        } else if levelIndex == 2 {
+            setupBossArena()
         }
         setupHUD()
         // Apply the level's starting max HP after the HUD exists, so the
@@ -301,6 +314,83 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         portal = p
     }
 
+    // MARK: - Boss arena (level 2)
+
+    private func setupBossArena() {
+        let groundTopY: CGFloat = 60
+
+        // 3×3 grid laid out so the camera lock view shows: grid → barrier → boss.
+        // Cell size and column offsets are chosen so the whole arena fits
+        // inside the locked viewport (~886 scene units wide at cameraZoom 0.65).
+        let cellW: CGFloat = 110
+        let cellH: CGFloat = 110
+
+        // Arena anchored at 3/4 of the world width.
+        arenaCenterX = size.width * 0.75
+
+        // Columns centered to the LEFT of the arena center (player side).
+        let rightX: CGFloat = arenaCenterX - 40    // rightmost grid column
+        let midX: CGFloat = rightX - cellW
+        let leftX: CGFloat = rightX - 2 * cellW
+
+        // Rows: row 0 = bottom (ground level), row 1 = mid, row 2 = top.
+        let row0Y = groundTopY + cellH / 2
+        let row1Y = row0Y + cellH
+        let row2Y = row1Y + cellH
+
+        let gridCells: [[CGPoint]] = [
+            [CGPoint(x: leftX, y: row0Y), CGPoint(x: midX, y: row0Y), CGPoint(x: rightX, y: row0Y)],
+            [CGPoint(x: leftX, y: row1Y), CGPoint(x: midX, y: row1Y), CGPoint(x: rightX, y: row1Y)],
+            [CGPoint(x: leftX, y: row2Y), CGPoint(x: midX, y: row2Y), CGPoint(x: rightX, y: row2Y)],
+        ]
+
+        // Platforms (footing for the player to reach upper rows). Position
+        // their TOP at the row's bottom so the player stands inside the cell.
+        // Pattern follows the sketch: top-row middle, mid-row left, mid-row right.
+        let platformWidth: CGFloat = cellW - 20
+        let platformH: CGFloat = 18
+        // Row 1 (mid) — left column platform
+        addPlatform(at: CGPoint(x: leftX, y: row1Y - cellH / 2 - platformH / 2),
+                    size: CGSize(width: platformWidth, height: platformH))
+        // Row 1 (mid) — right column platform
+        addPlatform(at: CGPoint(x: rightX, y: row1Y - cellH / 2 - platformH / 2),
+                    size: CGSize(width: platformWidth, height: platformH))
+        // Row 2 (top) — middle column platform
+        addPlatform(at: CGPoint(x: midX, y: row2Y - cellH / 2 - platformH / 2),
+                    size: CGSize(width: platformWidth, height: platformH))
+
+        // Barrier just to the right of the rightmost column.
+        let barrierX = rightX + cellW / 2 + 16
+        let b = BarrierNode(at: CGPoint(x: barrierX, y: groundTopY))
+        b.onBroken = { [weak self] in
+            self?.barrier = nil
+        }
+        addChild(b)
+        barrier = b
+
+        // Boss body to the right of the barrier.
+        let bossX = barrierX + 130
+        let bo = BossNode(at: CGPoint(x: bossX, y: groundTopY))
+        bo.onDefeat = { [weak self] in
+            self?.triggerVictory()
+        }
+        addChild(bo)
+        boss = bo
+
+        // Lock trigger sits just before the leftmost column so the camera
+        // snaps into the arena once the player is about to enter the grid.
+        arenaLockTriggerX = leftX - cellW / 2 - 40
+
+        // Spin up the AI.
+        let ai = BossAIController(
+            gridCells: gridCells,
+            cellSize: CGSize(width: cellW, height: cellH),
+            scene: self
+        )
+        ai.start()
+        bossAI = ai
+    }
+
     /// Removes any existing enemy nodes and spawns a fresh set from `enemySpawns`.
     private func spawnEnemies() {
         for enemy in enemies { enemy.removeFromParent() }
@@ -336,6 +426,24 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             collectibleHUD?.reset()
             setupCollectibles()
             setupPortal()
+        }
+
+        // Reset boss arena (only present on level 2).
+        if levelIndex == 2 {
+            bossAI?.stop()
+            bossAI = nil
+            barrier?.removeFromParent()
+            barrier = nil
+            boss?.removeFromParent()
+            boss = nil
+            // Remove any in-flight attack hitboxes.
+            children.compactMap { $0 as? BossAttackHitbox }.forEach { $0.removeFromParent() }
+            isCameraLocked = false
+            isVictoryCinematic = false
+            isVictoryShown = false
+            winOverlay?.removeFromParent()
+            winOverlay = nil
+            setupBossArena()
         }
 
         // Clear damage cooldown & overlay
@@ -546,6 +654,55 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         view.presentScene(menu, transition: .fade(withDuration: 0.4))
     }
 
+    // MARK: - Victory (boss defeated)
+
+    private func triggerVictory() {
+        guard !isVictoryCinematic, !isVictoryShown else { return }
+        isVictoryCinematic = true
+        bossAI?.stop()
+        player.stopMoving()
+        player.physicsBody?.velocity = .zero
+        physicsWorld.speed = 0
+
+        guard let cam = camera else { return }
+        let overlay = BossDefeatOverlay(visibleSize: visibleSize)
+        overlay.onComplete = { [weak self] in
+            self?.isVictoryCinematic = false
+            self?.showWinOverlay()
+        }
+        cam.addChild(overlay)
+        overlay.present()
+    }
+
+    private func showWinOverlay() {
+        guard !isVictoryShown, let cam = camera else { return }
+        isVictoryShown = true
+        let overlay = SKNode()
+        overlay.zPosition = 2000
+
+        let bg = SKShapeNode(rectOf: CGSize(width: visibleSize.width, height: visibleSize.height))
+        bg.fillColor = SKColor(white: 0, alpha: 0.65)
+        bg.strokeColor = .clear
+        overlay.addChild(bg)
+
+        let label = SKLabelNode(text: "YOU WIN")
+        label.fontName = "AvenirNext-Bold"
+        label.fontSize = 96
+        label.fontColor = .yellow
+        label.position = CGPoint(x: 0, y: 60)
+        overlay.addChild(label)
+
+        overlay.addChild(makeOverlayButton(
+            name: "restartButton", label: "RESTART", position: CGPoint(x: 0, y: -80)
+        ))
+        overlay.addChild(makeOverlayButton(
+            name: "menuButton", label: "MAIN MENU", position: CGPoint(x: 0, y: -190)
+        ))
+
+        cam.addChild(overlay)
+        winOverlay = overlay
+    }
+
     // MARK: - HUD
 
     private func setupHUD() {
@@ -644,8 +801,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Touch handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if isPortalTransitioning {
-            // Swallow all input while the portal overlay is showing.
+        if isPortalTransitioning || isVictoryCinematic {
+            // Swallow all input while a transition overlay is showing.
+            return
+        }
+        if isVictoryShown {
+            for touch in touches {
+                guard let overlay = winOverlay else { return }
+                let location = touch.location(in: overlay)
+                if let restart = overlay.childNode(withName: "restartButton") as? SKShapeNode,
+                   restart.contains(location) {
+                    overlay.removeFromParent()
+                    winOverlay = nil
+                    isVictoryShown = false
+                    restartLevel()
+                    return
+                }
+                if let menu = overlay.childNode(withName: "menuButton") as? SKShapeNode,
+                   menu.contains(location) {
+                    goToMainMenu()
+                    return
+                }
+            }
             return
         }
         if isInDialogue {
@@ -749,6 +926,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         if isPaused_ || isPortalTransitioning { return }
         if isShowingGameOverOverlay { return }
+        if isVictoryCinematic || isVictoryShown { return }
+
+        // Lock the camera once the player crosses the arena trigger (level 2).
+        if levelIndex == 2, !isCameraLocked, player.position.x >= arenaLockTriggerX {
+            isCameraLocked = true
+            // Drop an invisible wall behind the player so they can't backtrack
+            // out of the arena. Only added now (not in setupBossArena) so it
+            // doesn't block the player from walking in in the first place.
+            addWall(x: arenaLockTriggerX - 30, thickness: 20, height: size.height * 4)
+        }
 
         // During dying (isGameOver == true, overlay not yet shown), we still
         // let player physics and the camera run so the corpse falls naturally
@@ -773,8 +960,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let halfVisH = visibleSize.height * GameScene.cameraZoom / 2
             let minCamX = worldMinX + halfVisW
             let maxCamX = worldMaxX - halfVisW
-            let clampedX = min(max(player.position.x, minCamX), maxCamX)
-            cam.position = CGPoint(x: clampedX, y: max(player.position.y, halfVisH))
+            let targetX: CGFloat
+            if isCameraLocked {
+                targetX = arenaCenterX
+            } else {
+                targetX = min(max(player.position.x, minCamX), maxCamX)
+            }
+            cam.position = CGPoint(x: targetX, y: max(player.position.y, halfVisH))
         }
     }
 
@@ -825,6 +1017,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if let p = portal, p.isUnlocked, !isPortalTransitioning {
                 triggerPortalTransition()
             }
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.bossAttack) {
+            if damageCooldown <= 0 {
+                player.applyHitKnockback(direction: player.facingRight ? -1 : 1)
+                player.takeDamage()
+                flashDamageVignette()
+                damageCooldown = 1.0
+            }
+        } else if mask == (PhysicsCategory.projectile | PhysicsCategory.bossAttack) {
+            // Find the hit live cell. Walk up the node tree to the
+            // BossAttackHitbox container to read its `kind`.
+            let attackBody = contact.bodyA.categoryBitMask == PhysicsCategory.bossAttack ? contact.bodyA : contact.bodyB
+            var node = attackBody.node
+            while node != nil, !(node is BossAttackHitbox) { node = node?.parent }
+            if let container = node as? BossAttackHitbox, container.kind == .vertical {
+                barrier?.registerHit()
+            }
+        } else if mask == (PhysicsCategory.projectile | PhysicsCategory.bossBody) {
+            // Only counts after the barrier is gone.
+            if barrier == nil { boss?.takeFinalHit() }
         }
     }
 

@@ -307,9 +307,11 @@ class PlayerNode: SKSpriteNode {
         body.categoryBitMask = PhysicsCategory.player
         body.collisionBitMask = PhysicsCategory.platform | PhysicsCategory.ground
             | PhysicsCategory.enemy | PhysicsCategory.wall
+            | PhysicsCategory.barrier | PhysicsCategory.bossBody
         body.contactTestBitMask = PhysicsCategory.platform | PhysicsCategory.ground
             | PhysicsCategory.enemy | PhysicsCategory.artifact | PhysicsCategory.teleport
             | PhysicsCategory.collectible | PhysicsCategory.portal
+            | PhysicsCategory.bossAttack | PhysicsCategory.bossBody
         physicsBody = body
         addDebugHitbox(
             size: PlayerNode.bodySize,
