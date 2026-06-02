@@ -38,7 +38,7 @@ class SlimeEnemy: EnemyNode {
             bodySize: CGSize(width: 38, height: 28),
             bodyCenterY: 14,
             anchorY: 0.25,            // PNG has padding below the visible slime
-            isAffectedByGravity: false,
+            isAffectedByGravity: true,
             hp: 1
         )
         run(.repeatForever(.animate(

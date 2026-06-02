@@ -8,6 +8,10 @@
 import SpriteKit
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
+    
+    //level manager
+    private var currentLevel = 5
+    private var levelData: Level!
 
     private var player: PlayerNode!
     private var lastUpdateTime: TimeInterval = 0
@@ -77,7 +81,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     override func didMove(to view: SKView) {
         backgroundColor = SKColor(red: 0.55, green: 0.78, blue: 0.95, alpha: 1.0)
         
-        let bgTexture = SKTexture(imageNamed: "forest_bg")
+        // Level order: 1 Primavera · 2 Verão · 3 Outono · 4 Inverno · 5 Vazio
+        let background: String
+        switch currentLevel {
+        case 1:  background = "forest_bg"   // Primavera
+        case 2:  background = "beachbg"     // Verão
+        case 3:  background = "aut_bg"      // Outono
+        case 4:  background = "winter_bg"   // Inverno
+        default: background = "bg_boss"     // Vazio
+        }
+        
+        let bgTexture = SKTexture(imageNamed: background)
         bgTexture.filteringMode = .nearest
 
         let tileWidth = bgTexture.size().width
@@ -104,10 +118,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupCamera()
         setupGround()
         setupWorldBounds()
-        setupPlatforms()
         setupPlayer()
-        setupEnemies()
-        setupNPC()
+        loadLevel(currentLevel)
         setupHUD()
     }
 
@@ -122,7 +134,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func setupGround() {
-        let texture = SKTexture(imageNamed: "floor")
+        let ground_level: String
+        switch currentLevel {
+        case 1: ground_level = "floor"         // Primavera
+        case 2: ground_level = "sand"          // Verão
+        case 3: ground_level = "floor"         // Outono (reutiliza chão genérico)
+        case 4: ground_level = "groundwinter"  // Inverno
+        default: ground_level = "platform_boss"       // Boss
+        }
+        let texture = SKTexture(imageNamed: ground_level)
         texture.filteringMode = .nearest
         let tileWidth = texture.size().width
         let numTiles = Int(size.width * 3 / tileWidth) + 2
@@ -148,14 +168,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(ground)
     }
 
-    private func setupPlatforms() {
-        addPlatform(at: CGPoint(x: size.width * 0.30, y: 200), size: CGSize(width: 180, height: 24))
-        addPlatform(at: CGPoint(x: size.width * 0.55, y: 320), size: CGSize(width: 180, height: 24))
-        addPlatform(at: CGPoint(x: size.width * 0.80, y: 220), size: CGSize(width: 180, height: 24))
-    }
 
     private func addPlatform(at position: CGPoint, size: CGSize) {
-        let p = SKSpriteNode(imageNamed: "platform_tile")
+        let platform: String
+        switch currentLevel {
+        case 1:  platform = "platformspring"  // Primavera
+        case 2:  platform = "platform_beach"  // Verão
+        case 3:  platform = "platformspring"  // Outono
+        case 4:  platform = "platformwinter"  // Inverno
+        default: platform = "platform_boss"   // Boss
+        }
+        let p = SKSpriteNode(imageNamed: platform)
         p.texture?.filteringMode = .nearest
         p.position = position
         p.name = "platform"
@@ -174,7 +197,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         player = PlayerNode()
         player.position = playerSpawn
         player.onHealthChanged = { [weak self] current, max in
-            self?.healthHUD.setHealth(current: current, max: max)
+            self?.healthHUD?.setHealth(current: current, max: max)
             if current <= 0 { self?.triggerGameOver() }
         }
         addChild(player)
@@ -361,6 +384,60 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         text.verticalAlignmentMode = .center
         button.addChild(text)
         return button
+    }
+    
+    
+    private func loadLevel(_ level: Int) {
+
+        enemies.forEach { $0.removeFromParent() }
+        enemies.removeAll()
+
+        npc?.removeFromParent()
+        npc = nil
+
+        currentLevel = level
+
+        if level == 1 {
+            levelData = Levels.level1(size: size)
+        } else if level == 2 {
+            levelData = Levels.level2(size: size)
+        } else if level == 3 {
+            levelData = Levels.level3(size: size)
+        }else if level == 4 {
+            levelData = Levels.level4(size: size)
+        }else{
+            levelData = Levels.level5(size: size)
+        }
+
+        player.position = levelData.playerSpawn
+        player.physicsBody?.velocity = .zero
+        player.stopMoving()
+        player.resetHealth()
+        damageCooldown = 0.8
+
+        for p in levelData.platforms {
+            addPlatform(at: p.0, size: p.1)
+        }
+        
+        for (imageName, position) in levelData.decorations {
+            let sprite = SKSpriteNode(imageNamed: imageName)
+            sprite.texture?.filteringMode = .nearest
+            sprite.anchorPoint = CGPoint(x: 0.5, y: 0.0)
+            sprite.position = position
+            sprite.zPosition = 1
+            addChild(sprite)
+        }
+
+        enemies = levelData.enemies.map { $0() }
+        enemies.forEach { addChild($0) }
+
+        if let npcNode = levelData.npc {
+            if let npcPosition = levelData.npcPosition {
+                npcNode.position = npcPosition
+            }
+            addChild(npcNode)
+            npc = npcNode
+        }
     }
 
     // MARK: - NPC interaction

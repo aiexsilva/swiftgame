@@ -19,7 +19,6 @@ final class PortalNode: SKSpriteNode {
             t.filteringMode = .nearest
             return t
         }
-        // 1,2,3,4,3,2 ping-pong.
         return forward
     }()
 

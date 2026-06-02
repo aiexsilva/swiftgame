@@ -47,7 +47,7 @@ class SnakeEnemy: EnemyNode {
             bodySize: CGSize(width: 44, height: 28),
             bodyCenterY: 14,
             anchorY: 0,
-            isAffectedByGravity: false,
+            isAffectedByGravity: true,
             hp: 4
         )
         play(.idle)

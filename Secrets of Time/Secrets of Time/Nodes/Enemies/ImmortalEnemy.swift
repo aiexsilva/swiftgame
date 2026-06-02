@@ -19,7 +19,7 @@ class ImmortalEnemy: EnemyNode {
             bodySize: CGSize(width: 44, height: 48),
             bodyCenterY: 24,
             anchorY: 0,
-            isAffectedByGravity: false,
+            isAffectedByGravity: true,
             hp: 1,
             isImmortal: true
         )
