@@ -2,9 +2,10 @@
 //  BossAIController.swift
 //  Secrets of Time
 //
-//  Controls the boss attack cycle using a shuffle-bag algorithm to ensure
-//  every possible attack fires once before any repeats. The boss has two
-//  attack types: horizontal rows (pata) and vertical columns (tentáculo).
+//  Controla o ciclo de ataques do boss com um algoritmo de shuffle-bag:
+//  todos os ataques possíveis disparam uma vez antes de qualquer repetição.
+//  Três tipos de ataque: linha horizontal (pata 1×3), coluna vertical (tentáculo 3×1)
+//  e célula individual (pata 1×1). Um ataque de cada vez.
 //
 
 import SpriteKit
@@ -17,8 +18,8 @@ final class BossAIController {
 
     // MARK: - Types
 
-    /// All possible attacks the boss can choose from.
-    private enum Attack { case row(Int), column(Int) }
+    /// Todos os ataques possíveis do boss.
+    private enum Attack { case row(Int), column(Int), single }
 
     // MARK: - Properties
 
@@ -59,11 +60,14 @@ final class BossAIController {
 
     // MARK: - Private helpers
 
-    /// Rebuilds and shuffles the bag with all 6 attacks (3 rows + 3 cols).
+    /// Reconstrói e embaralha o bag com os 9 ataques possíveis:
+    /// 3 linhas (pata 1×3) + 3 colunas (tentáculo 3×1) + 3 células individuais (pata 1×1).
     private func refillBag() {
         var all: [Attack] = []
-        for r in 0..<gridCells.count                    { all.append(.row(r)) }
-        for c in 0..<(gridCells.first?.count ?? 0)      { all.append(.column(c)) }
+        for r in 0..<gridCells.count               { all.append(.row(r)) }
+        for c in 0..<(gridCells.first?.count ?? 0) { all.append(.column(c)) }
+        // Três patas individuais com célula aleatória cada
+        for _ in 0..<3                             { all.append(.single) }
         bag = all.shuffled()
     }
 
@@ -93,13 +97,19 @@ final class BossAIController {
         let attack: BossAttackHitbox
         switch next {
         case .row(let r):
-            // Horizontal row of patas — grows right-to-left from the boss side
+            // Linha horizontal de patas 1×3 — cresce da direita para a esquerda
             attack = BossAttackHitbox.makeRow(cells: gridCells[r],
                                               cellSize: cellSize, onExpire: onExpire)
         case .column(let c):
-            // Vertical column of tentáculos — grows bottom-to-top
+            // Coluna vertical de tentáculos 3×1 — cresce de baixo para cima
             let col = gridCells.map { $0[c] }
             attack = BossAttackHitbox.makeColumn(cells: col,
+                                                 cellSize: cellSize, onExpire: onExpire)
+        case .single:
+            // Pata individual 1×1 — célula aleatória da grelha
+            let r = Int.random(in: 0..<gridCells.count)
+            let c = Int.random(in: 0..<(gridCells.first?.count ?? 1))
+            attack = BossAttackHitbox.makeSingle(cell: gridCells[r][c],
                                                  cellSize: cellSize, onExpire: onExpire)
         }
         scene.addChild(attack)

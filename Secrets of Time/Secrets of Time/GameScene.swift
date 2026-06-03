@@ -342,17 +342,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupBoss() {
         tentacleHitsCount = 0
 
-        // -- Trigger (visible orange line) --
+        // Trigger invisível — a linha laranja foi removida.
+        // O disparo do zoom/IA continua a funcionar: o update loop verifica
+        // se player.position.x >= bossZoomTriggerX a cada frame.
         bossZoomTriggerX = 260
         bossLockedCameraX = 590
-        let trigger = SKShapeNode(rectOf: CGSize(width: 8, height: 700))
-        trigger.fillColor = SKColor.orange.withAlphaComponent(0.5)
-        trigger.strokeColor = .orange
-        trigger.lineWidth = 2
-        trigger.position = CGPoint(x: bossZoomTriggerX, y: 350)
-        trigger.name = "cameraTrigger"
-        trigger.zPosition = 90
-        addChild(trigger)
 
         // -- Barrier --
         let barrierNode = BarrierNode(at: CGPoint(x: 700, y: 0))
@@ -499,6 +493,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let scene = GameScene(size: size)
         scene.scaleMode = scaleMode
         scene.currentLevel = currentLevel
+        scene.startingMaxHP = startingMaxHP  // preserva o HP máximo ganho neste nível
         view.presentScene(scene, transition: SKTransition.fade(with: .black, duration: 0.3))
     }
 
@@ -944,17 +939,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 enemy.takeDamage()
             }
 
-        // -- Player attack ↔ Boss attack (tentacle/pata) → counts toward barrier --
+        // -- Player attack ↔ Boss attack (pata/tentáculo) --
         } else if mask == (PhysicsCategory.projectile | PhysicsCategory.bossAttack) {
-            // O tentáculo/pata NÃO é destruído — continua ativo no ecrã.
-            // Apenas contamos o acerto para efeitos de progressão da barreira.
-            tentacleHitsCount += 1
-            if tentacleHitsCount >= tentacleHitsRequired {
-                tentacleHitsCount = 0
-                barrier?.registerHit()
-                barrier?.registerHit()
-                barrier?.registerHit()  // 3 hits = break immediately
+            let attackBody = contact.bodyA.categoryBitMask == PhysicsCategory.bossAttack
+                ? contact.bodyA : contact.bodyB
+
+            guard let hitNode = attackBody.node,
+                  let parentAttack = hitNode.parent as? BossAttackHitbox else { return }
+
+            if parentAttack.kind == .vertical {
+                // Tentáculo: conta para destruir a barreira (não remove o node)
+                tentacleHitsCount += 1
+                if tentacleHitsCount >= tentacleHitsRequired {
+                    tentacleHitsCount = 0
+                    barrier?.registerHit()
+                    barrier?.registerHit()
+                    barrier?.registerHit()  // 3 hits = break immediately
+                }
             }
+            // Pata linha (1×3) e pata célula (1×1): não são removidas nem contam para a barreira.
+            // O jogador tem de as esquivar — expiram pelo seu próprio timer.
 
         // -- Player attack ↔ Boss body --
         } else if mask == (PhysicsCategory.projectile | PhysicsCategory.bossBody) {

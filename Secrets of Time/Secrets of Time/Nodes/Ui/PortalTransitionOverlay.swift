@@ -56,13 +56,13 @@ final class PortalTransitionOverlay: SKNode {
         let pieceSize: CGFloat = 300
         let gap: CGFloat = 12
 
-        // Slot positions: 1=top-left, 2=top-right, 3=bottom-left, 4=bottom-right
+        // Slot positions: 1=top-left, 2=top-right, 3=bottom-right, 4=bottom-left
         let half = pieceSize / 2 + gap / 2
         let offsets: [CGPoint] = [
             CGPoint(x: -half, y:  half),   // 1 – top-left
             CGPoint(x:  half, y:  half),   // 2 – top-right
-            CGPoint(x: -half, y: -half),   // 3 – bottom-left
-            CGPoint(x:  half, y: -half)    // 4 – bottom-right
+            CGPoint(x:  half, y: -half),   // 3 – bottom-right
+            CGPoint(x: -half, y: -half)    // 4 – bottom-left
         ]
 
         for i in 1...levelsCompleted {

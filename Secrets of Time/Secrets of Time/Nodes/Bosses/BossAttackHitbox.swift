@@ -2,31 +2,31 @@
 //  BossAttackHitbox.swift
 //  Secrets of Time
 //
-//  Hitboxes dos dois tipos de ataque do boss:
-//    • horizontal (pata)    — linha de células que cresce da direita para a esquerda
-//    • vertical (tentáculo) — coluna de células que cresce de baixo para cima
-//  Cada ataque exibe sinais de aviso (warning) antes de ativar a hitbox real,
-//  dando ao jogador tempo para se esquivar.
+//  Hitboxes dos três tipos de ataque do boss:
+//    • horizontal (pata linha) — hitbox 1×3 combinado, cresce da direita para a esquerda
+//    • vertical  (tentáculo)   — hitbox 3×1 combinado, cresce de baixo para cima; persiste ao ser acertado
+//    • single    (pata célula) — hitbox 1×1 com sprite de pata; desaparece ao ser acertado
+//  Cada ataque exibe sinais de aviso antes de ativar a hitbox, dando ao jogador tempo para se esquivar.
 //
 
 import SpriteKit
 
-/// Tipo de ataque do boss: horizontal (pata) ou vertical (tentáculo).
+/// Tipo de ataque do boss.
 enum BossAttackKind {
-    case horizontal   // linha de patas, hitbox cresce da direita para a esquerda
-    case vertical     // coluna de tentáculos, hitbox cresce de baixo para cima
+    case horizontal  // pata linha 1×3 — remove quando acertada
+    case vertical    // tentáculo 3×1 — persiste quando acertado
+    case single      // pata célula 1×1 — remove quando acertada
 }
 
-/// Telegraph (3 warning signs in separate cells) + single combined active hitbox
-/// that grows from a portal placed at the attack origin edge.
+/// Telegraph (warning signs) + hitbox ativa que cresce a partir de um portal.
 final class BossAttackHitbox: SKNode {
 
     let kind: BossAttackKind
 
     static let telegraphPerCell: TimeInterval = 0.22
     static let telegraphTail:    TimeInterval = 0.35
-    static let growDuration:     TimeInterval = 0.25   // time for the hitbox to fully extend
-    static let holdDuration:     TimeInterval = 0.35   // time the full hitbox stays active
+    static let growDuration:     TimeInterval = 0.25
+    static let holdDuration:     TimeInterval = 0.35
 
     private init(kind: BossAttackKind) {
         self.kind = kind
@@ -41,14 +41,12 @@ final class BossAttackHitbox: SKNode {
 
     // MARK: - Factories
 
-    /// Horizontal row (pata). `cells` left→right. Portal spawns on RIGHT edge.
+    /// Linha horizontal de patas (1×3). Portal à direita. Remove ao ser acertada.
     static func makeRow(cells: [CGPoint], cellSize: CGSize,
                         onExpire: (() -> Void)? = nil) -> BossAttackHitbox {
         let node = BossAttackHitbox(kind: .horizontal)
-        // Sweep warnings right→left (closest to portal first)
         let sweepOrder = Array(cells.reversed())
-        // Portal appears just to the right of the rightmost cell
-        let rightEdge = (cells.last?.x ?? 0) + cellSize.width / 2
+        let rightEdge  = (cells.last?.x ?? 0) + cellSize.width / 2
         let portalPos  = CGPoint(x: rightEdge + 24, y: cells[0].y)
         node.runAttack(sweepOrder: sweepOrder, cells: cells,
                        cellSize: cellSize, portalPos: portalPos,
@@ -56,17 +54,27 @@ final class BossAttackHitbox: SKNode {
         return node
     }
 
-    /// Vertical column (tentáculo). `cells` bottom→top. Portal spawns on BOTTOM edge.
+    /// Coluna vertical de tentáculos (3×1). Portal em baixo. Persiste ao ser acertado.
     static func makeColumn(cells: [CGPoint], cellSize: CGSize,
                            onExpire: (() -> Void)? = nil) -> BossAttackHitbox {
         let node = BossAttackHitbox(kind: .vertical)
-        // Sweep warnings bottom→top (closest to portal first)
         let sweepOrder = cells
         let bottomEdge = (cells.first?.y ?? 0) - cellSize.height / 2
         let portalPos  = CGPoint(x: cells[0].x, y: bottomEdge - 24)
         node.runAttack(sweepOrder: sweepOrder, cells: cells,
                        cellSize: cellSize, portalPos: portalPos,
                        hitboxImage: "tentaculo", horizontal: false, onExpire: onExpire)
+        return node
+    }
+
+    /// Pegada individual (1×1). Portal à direita da célula. Remove ao ser acertada.
+    static func makeSingle(cell: CGPoint, cellSize: CGSize,
+                           onExpire: (() -> Void)? = nil) -> BossAttackHitbox {
+        let node = BossAttackHitbox(kind: .single)
+        let portalPos = CGPoint(x: cell.x + cellSize.width / 2 + 24, y: cell.y)
+        node.runAttack(sweepOrder: [cell], cells: [cell],
+                       cellSize: cellSize, portalPos: portalPos,
+                       hitboxImage: "pegada", horizontal: true, onExpire: onExpire)
         return node
     }
 
@@ -80,7 +88,7 @@ final class BossAttackHitbox: SKNode {
         let portal = makePortal(at: portalPos, size: cellSize)
         addChild(portal)
 
-        // 2. Warning signs — one per cell in sweep order
+        // 2. Warning signs — um por célula na ordem de varrimento
         for (i, cell) in sweepOrder.enumerated() {
             let w = makeWarning(at: cell, size: cellSize)
             w.alpha = 0
@@ -94,7 +102,7 @@ final class BossAttackHitbox: SKNode {
         let totalTelegraph = BossAttackHitbox.telegraphPerCell * Double(sweepOrder.count)
                            + BossAttackHitbox.telegraphTail
 
-        // 3. Activate: remove warnings + single combined hitbox grows from portal
+        // 3. Ativa: remove warnings + spawna hitbox combinada
         run(.sequence([
             .wait(forDuration: totalTelegraph),
             .run { [weak self] in
@@ -108,7 +116,7 @@ final class BossAttackHitbox: SKNode {
         ]))
     }
 
-    // MARK: - Combined single hitbox
+    // MARK: - Hitbox combinada (usada por row, column e single)
 
     private func spawnCombinedHitbox(cells: [CGPoint], cellSize: CGSize,
                                      imageName: String, horizontal: Bool,
@@ -120,13 +128,13 @@ final class BossAttackHitbox: SKNode {
         let anchorPt: CGPoint
 
         if horizontal {
-            // Full row: wide as all cells, anchored at the right edge (portal side)
+            // Linha (ou célula única): largura total, âncora no lado direito (portal)
             combinedSize   = CGSize(width: cellSize.width * count, height: cellSize.height)
             let rightEdge  = (cells.last?.x ?? 0) + cellSize.width / 2
             combinedCenter = CGPoint(x: rightEdge, y: cells[0].y)
             anchorPt       = CGPoint(x: 1.0, y: 0.5)
         } else {
-            // Full column: tall as all cells, anchored at the bottom edge (portal side)
+            // Coluna: altura total, âncora na base (portal)
             combinedSize   = CGSize(width: cellSize.width, height: cellSize.height * count)
             let bottomEdge = (cells.first?.y ?? 0) - cellSize.height / 2
             combinedCenter = CGPoint(x: cells[0].x, y: bottomEdge)
@@ -140,7 +148,7 @@ final class BossAttackHitbox: SKNode {
         hitbox.position    = combinedCenter
         hitbox.name        = "bossAttackLive"
 
-        // Grow from portal (scale along the growth axis)
+        // Cresce a partir do portal
         if horizontal {
             hitbox.xScale = 0
             hitbox.run(.scaleX(to: 1.0, duration: BossAttackHitbox.growDuration))
@@ -149,17 +157,14 @@ final class BossAttackHitbox: SKNode {
             hitbox.run(.scaleY(to: 1.0, duration: BossAttackHitbox.growDuration))
         }
 
-        // Physics body covers the full combined area (centered in the node)
-        let bodyCenter: CGPoint
-        if horizontal {
-            bodyCenter = CGPoint(x: -combinedSize.width / 2, y: 0)
-        } else {
-            bodyCenter = CGPoint(x: 0, y: combinedSize.height / 2)
-        }
+        // Physics body cobre a área combinada
+        let bodyCenter: CGPoint = horizontal
+            ? CGPoint(x: -combinedSize.width / 2, y: 0)
+            : CGPoint(x: 0, y: combinedSize.height / 2)
         let body = SKPhysicsBody(rectangleOf: combinedSize, center: bodyCenter)
-        body.isDynamic = false
-        body.affectedByGravity = false
-        body.allowsRotation = false
+        body.isDynamic          = false
+        body.affectedByGravity  = false
+        body.allowsRotation     = false
         body.categoryBitMask    = PhysicsCategory.bossAttack
         body.collisionBitMask   = 0
         body.contactTestBitMask = PhysicsCategory.player | PhysicsCategory.projectile
@@ -167,7 +172,6 @@ final class BossAttackHitbox: SKNode {
 
         addChild(hitbox)
 
-        // Expire after hold duration
         let totalActive = BossAttackHitbox.growDuration + BossAttackHitbox.holdDuration
         run(.sequence([
             .wait(forDuration: totalActive),
