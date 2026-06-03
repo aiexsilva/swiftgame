@@ -1,3 +1,13 @@
+//
+//  PlayerNode.swift
+//  Secrets of Time
+//
+//  O personagem controlável pelo jogador. Gere o movimento horizontal, o salto,
+//  o ataque com hitbox, a saúde (com callbacks) e as animações por estados.
+//  A entrada do jogador chega através de chamadas da GameScene (startMoving,
+//  stopMoving, jump, performAttack). O update() deve ser chamado a cada frame.
+//
+
 import SpriteKit
 
 class PlayerNode: SKSpriteNode {
@@ -101,7 +111,7 @@ class PlayerNode: SKSpriteNode {
 
         attackFacingRight = facingRight
         let hitboxSize = CGSize(width: attackReach, height: attackHeight)
-        let hitbox = SKSpriteNode(color: SKColor(white: 1.0, alpha: 0.4), size: hitboxSize)
+        let hitbox = SKSpriteNode(color: .clear, size: hitboxSize)
         hitbox.name = "playerAttack"
         hitbox.position = attackHitboxPosition()
 
@@ -279,7 +289,8 @@ class PlayerNode: SKSpriteNode {
     }
 
     /// Toggle to draw a red outline around the physics body for visual debugging.
-    static var showDebugHitbox: Bool = true
+    /// Set to true during development to see red physics-body outlines.
+    static var showDebugHitbox: Bool = false
 
     private func addDebugHitbox(size: CGSize, center: CGPoint = .zero) {
         guard PlayerNode.showDebugHitbox else { return }
@@ -312,6 +323,7 @@ class PlayerNode: SKSpriteNode {
             | PhysicsCategory.enemy | PhysicsCategory.artifact | PhysicsCategory.teleport
             | PhysicsCategory.collectible | PhysicsCategory.portal
             | PhysicsCategory.bossAttack | PhysicsCategory.bossBody
+            | PhysicsCategory.enemyProjectile
         physicsBody = body
         addDebugHitbox(
             size: PlayerNode.bodySize,
@@ -331,11 +343,14 @@ class PlayerNode: SKSpriteNode {
         moveDirection = 0
     }
 
-    func jump() {
-        guard isGrounded, let body = physicsBody else { return }
+    /// Salta se o jogador estiver no chão. Retorna true se o salto aconteceu.
+    @discardableResult
+    func jump() -> Bool {
+        guard isGrounded, let body = physicsBody else { return false }
         body.velocity = CGVector(dx: body.velocity.dx, dy: 0)
         body.applyImpulse(CGVector(dx: 0, dy: jumpImpulse))
         isGrounded = false
+        return true
     }
 
     // MARK: - Per-frame update (called from GameScene.update)

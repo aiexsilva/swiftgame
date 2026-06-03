@@ -1,7 +1,15 @@
+//
+//  JumperEnemy.swift
+//  Secrets of Time
+//
+//  Inimigo saltador do Nível 3 (Outono). Dá dois saltos em frente e dois
+//  para trás, repetindo o padrão indefinidamente. Afetado pela gravidade,
+//  aterra entre cada salto. Requer 2 ataques para ser eliminado.
+//
+
 import SpriteKit
 
-/// Enemy that jumps two times forward, then two times backward, repeating.
-/// Affected by gravity so it lands between jumps.
+/// Inimigo que alterna entre dois saltos em frente e dois para trás.
 class JumperEnemy: EnemyNode {
 
     private let jumpHorizontalSpeed: CGFloat = 160
@@ -14,8 +22,10 @@ class JumperEnemy: EnemyNode {
 
     init() {
         let size = CGSize(width: 40, height: 40)
+        let tex = SKTexture(imageNamed: "sapinho")
+        tex.filteringMode = .nearest
         super.init(
-            texture: EnemyNode.placeholderTexture(size: size, color: .systemOrange),
+            texture: tex,
             displaySize: size,
             bodySize: CGSize(width: 32, height: 36),
             bodyCenterY: 18,

@@ -1,8 +1,16 @@
+//
+//  CollectibleNode.swift
+//  Secrets of Time
+//
+//  Peça de puzzle que o jogador apanha para desbloquear o portal de saída do nível.
+//  Cada instância usa um índice único (1–4) para escolher a sprite correspondente
+//  (Puzzle1.png … Puzzle4.png). Ao ser apanhada exibe uma animação de escala/fade
+//  e desaparece da cena.
+//
+
 import SpriteKit
 
-/// Pickup that increments the collectible counter and heals the player when
-/// the player touches it. Each instance corresponds to a unique puzzle piece
-/// (sprites `Puzzle1.png` … `Puzzle4.png`).
+/// Peça de puzzle coleccionável. Desbloqueia o portal ao ser apanhada.
 final class CollectibleNode: SKSpriteNode {
 
     /// Index of the puzzle piece this pickup represents (1-based).

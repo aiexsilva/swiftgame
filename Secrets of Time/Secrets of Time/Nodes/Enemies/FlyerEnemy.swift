@@ -1,7 +1,15 @@
+//
+//  FlyerEnemy.swift
+//  Secrets of Time
+//
+//  Inimigo voador do Nível 2 (Verão). Patrulha horizontalmente a uma
+//  altitude fixa (sem gravidade), invertendo a direção nos limites.
+//  Requer 2 ataques para ser eliminado.
+//
+
 import SpriteKit
 
-/// Floating enemy that patrols horizontally at a fixed altitude (no gravity).
-/// Uses a placeholder color box until a real sprite is added.
+/// Inimigo voador que patrulha horizontalmente a altitude fixa.
 class FlyerEnemy: EnemyNode {
 
     private let moveSpeed: CGFloat = 170.0
@@ -13,8 +21,10 @@ class FlyerEnemy: EnemyNode {
         self.minX = min(minX, maxX)
         self.maxX = max(minX, maxX)
         let size = CGSize(width: 44, height: 36)
+        let tex = SKTexture(imageNamed: "mosca")
+        tex.filteringMode = .nearest
         super.init(
-            texture: EnemyNode.placeholderTexture(size: size, color: .systemPurple),
+            texture: tex,
             displaySize: size,
             bodySize: size,
             bodyCenterY: size.height / 2,

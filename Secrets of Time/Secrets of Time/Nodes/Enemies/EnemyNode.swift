@@ -1,8 +1,17 @@
+//
+//  EnemyNode.swift
+//  Secrets of Time
+//
+//  Classe base partilhada por todos os inimigos do jogo. Trata da física,
+//  saúde/dano, feedback visual ao ser atingido (tint vermelho + tremor) e
+//  da sequência de morte (animação → espera → desaparece). Cada subclasse
+//  sobrepõe update(_:playerPosition:) para definir o seu comportamento único.
+//
+
 import SpriteKit
 
-/// Base class shared by all enemies. Handles physics, health/damage, debug
-/// hitbox and a death callback. Each enemy subclass overrides `update(...)`
-/// to implement its specific behavior (patrol, jump, chase, …).
+/// Classe base de todos os inimigos. Gere física, vida e animação de morte.
+/// As subclasses implementam o comportamento em `update(_:playerPosition:)`.
 class EnemyNode: SKSpriteNode {
 
     // MARK: - Health
@@ -20,8 +29,8 @@ class EnemyNode: SKSpriteNode {
     let bodyCenter: CGPoint
     let isAffectedByGravity: Bool
 
-    /// Toggle to draw a red outline around the physics body for visual debugging.
-    static var showDebugHitbox: Bool = true
+    /// Set to true during development to draw a red outline around physics bodies.
+    static var showDebugHitbox: Bool = false
 
     // MARK: - Init
     init(

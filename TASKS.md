@@ -9,8 +9,8 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 
 ## 0. Estado geral
 
-- [ ] MVP funcional (níveis 1 e 2 jogáveis ponta-a-ponta)
-- [ ] Jogo completo (5 níveis + boss)
+- [x] MVP funcional (níveis 1 e 2 jogáveis ponta-a-ponta)
+- [x] Jogo completo (5 níveis + boss) — todas as peças integradas, falta testar e polir
 - [ ] Build final testada em dispositivo iOS real
 
 ---
@@ -46,7 +46,7 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 - [x] Câmara (`SKCameraNode`) a seguir o player
 - [x] Clamp da câmara aos limites do nível
 - [x] Gravidade do mundo configurada
-- [ ] Background placeholder por estação
+- [x] Background placeholder por estação
 - [ ] Parallax simples no background 🟡
 
 ---
@@ -70,27 +70,26 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 - [x] 5.5 Contacto Player↔Enemy → dano ao player
 - [x] 5.6 Inimigo tipo 2 — saltador (introduzido no nível 3) 🟡
 - [x] 5.7 Inimigo tipo 3 — voador (nível 4 ou 5) 🟡
-- [ ] 5.8 Inimigo tipo 4 — atirador (nível 4) 🟡
+- [x] 5.8 Inimigo tipo 4 — atirador (nível 4) 🟡 — TurretEnemy + EnemyProjectile + PenguinEnemy + SpiderEnemy implementados
 
 ---
 
 ## 6. Coletáveis e progressão 🔴 (B)
 
-- [x] `ArtifactNode.swift` — coletável estático
-- [x] `ScoreManager.swift` — score atual + threshold do nível
-- [x] `LevelManager.swift` — config de cada nível e próximo nível
-- [x] Teleporte aparece/ativa quando score ≥ threshold
-- [x] Contacto Player↔Teleporte → transição para próximo nível
+- [x] `CollectibleNode.swift` — puzzle piece coletável
+- [x] `PortalNode.swift` — portal de saída por nível
+- [x] Portal instanciado em cada nível com 1 collectible necessário
+- [x] Transição de nível via portal com overlay do puzzle (Puzzle1-4)
+- [x] Transição começa sem esperar que o overlay termine
 - [ ] Persistência de progresso entre níveis (qual o nível desbloqueado) 🟡
 
 ---
 
 ## 7. UI / HUD 🔴 (C)
 
-- [x] Label de score
-- [ ] Barra de progresso do threshold
-- [x] Indicador de vida do player
-- [ ] Indicador "teleporte ativo"
+- [x] Indicador de vida do player (HealthHUD)
+- [x] CollectibleHUD — estrutura existente
+- [x] Counter no portal (x/N peças coletadas)
 - [x] Botão de pausa + menu de pausa 🟡
 
 ---
@@ -100,71 +99,76 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 - [x] `MenuScene.swift` — botão Play, título do jogo
 - [x] `GameOverScene.swift` — Win/Lose, botões Retry e Menu
 - [ ] `LevelSelectScene.swift` — escolher nível desbloqueado 🟡
-- [ ] Transições com `SKTransition` entre cenas
+- [x] Transições com `SKTransition.fade` entre cenas
 - [ ] Ecrã de créditos 🟢
-- [ ] Cartões de texto narrativos entre níveis 🟡
+- [x] Overlay do puzzle (narrativa visual entre níveis)
 
 ---
 
 ## 9. Conteúdo dos níveis
 
 ### Nível 1 — Spring 🔴 (B)
-- [ ] Layout de plataformas (tutorial, fácil)
-- [ ] Posicionamento de inimigos
-- [ ] Posicionamento de artefactos
-- [ ] Threshold de score balanceado
+- [x] Layout de plataformas
+- [x] Inimigos: Slime + FlowerPot
+- [x] Collectible + Portal instanciados
+- [x] NPC KittyCat com diálogo sobre inimigos
 - [ ] Música/ambiente
 
 ### Nível 2 — Summer 🔴 (B)
-- [ ] Layout (deserto/praia)
-- [ ] Inimigos mais rápidos
-- [ ] Artefactos
-- [ ] Threshold balanceado
+- [x] Layout (praia)
+- [x] Inimigos: Snake + Flyer
+- [x] Collectible + Portal instanciados
+- [x] NPC KittyCat com diálogo
 - [ ] Música/ambiente
 
 ### Nível 3 — Autumn 🟡 (B)
-- [ ] Layout (floresta escura, plataforming mais técnico)
-- [ ] Introduzir inimigo tipo 2 (saltador)
-- [ ] Artefactos
-- [ ] Threshold balanceado
+- [x] Layout
+- [x] Inimigos: Jumper + Spider (novo inimigo imoral oscilatório)
+- [x] Collectible + Portal instanciados
+- [x] NPC KittyCat com diálogo
 - [ ] Música/ambiente
 
 ### Nível 4 — Winter 🟡 (B)
-- [ ] Layout com plataformas geladas
-- [ ] Física escorregadia (atrito reduzido no chão)
-- [ ] Inimigos mais agressivos / atirador
-- [ ] Artefactos
-- [ ] Threshold balanceado
+- [x] Layout com plataformas
+- [x] Inimigos: Turret + Penguin (novos)
+- [x] Collectible + Portal instanciados
+- [x] NPC KittyCat Winter com diálogo
 - [ ] Música/ambiente
 
-### Nível 5 — Lost Time 🟡 (B)
-- [ ] Layout do void/dimensão final
-- [ ] Ambiente visual distintivo (sem cor / partículas)
-- [ ] Threshold ou condição especial para desbloquear o boss
-- [ ] Música/ambiente
+### Nível 5 — Vazio/Boss 🟡 (B)
+- [x] Layout da arena
+- [x] Trigger de câmara visível (retângulo laranja)
+- [x] Lerp zoom-out (0.65→0.90) ao cruzar o trigger
+- [ ] Música/ambiente boss
 
 ### Boss fight 🟡 (A + B)
-- [ ] `BossNode.swift` com HP
-- [ ] Padrão de ataque 1
-- [ ] Padrão de ataque 2
-- [ ] Fases (mudança de comportamento conforme HP)
-- [ ] Barra de vida do boss no HUD
-- [ ] Ecrã de vitória final / final do jogo
+- [x] `BossNode.swift` com HP e callback de derrota
+- [x] `BossAIController` com grid 3×3 e padrões de ataque
+- [x] `BarrierNode` (3 hits para destruir)
+- [x] `BossAttackHitbox` com telegraph + hitbox ativa
+- [x] Dano ao player por bossAttack e bossBody
+- [x] Ecrã de vitória (BossDefeatOverlay → goToMainMenu)
+- [ ] Barra de vida do boss no HUD 🟡
+- [ ] Sons do boss (a adicionar)
 
 ---
 
 ## 10. Áudio 🟡 (C)
 
-- [ ] Música de fundo por nível (5 tracks)
-- [ ] Música do menu
+- [x] Música de fundo — Main_music.mp3 em loop (SKAudioNode)
+- [ ] Música específica por nível 🟡
 - [ ] Música do boss
-- [ ] SFX: tiro
-- [ ] SFX: coletar artefacto
-- [ ] SFX: morte de inimigo
-- [ ] SFX: dano ao player
-- [ ] SFX: salto
-- [ ] SFX: teleporte
-- [ ] SFX: botões de UI
+- [x] SFX: tiro do turret — fireball.mp3
+- [x] SFX: coletar artefacto — coin-catch.mp3
+- [x] SFX: portal desbloqueado — upgrade_levelup.mp3
+- [x] SFX: morte de inimigo — enemy-kill.mp3
+- [ ] SFX: dano em inimigo (a fornecer)
+- [x] SFX: dano ao player — explosion_2.mp3
+- [x] SFX: morte do player — player-death.mp3
+- [x] SFX: salto — jumping-sound-effect.mp3
+- [x] SFX: entrada no portal — woosh.mp3
+- [x] SFX: abertura de diálogo — chime.mp3 + meow.mp3
+- [x] SFX: boss derrotado — groan.mp3
 - [ ] Controlo de volume / mute 🟢
 
 ---
@@ -172,10 +176,10 @@ Ficheiro de acompanhamento das tarefas do projeto. Marca com `[x]` à medida que
 ## 11. Arte e animação 🟢 (—)
 
 - [x] Sprite sheet do player com animações (idle, walk, jump, shoot, hit)
-- [ongoing] Sprite sheet de cada tipo de inimigo
-- [x] Sprite dos artefactos por estação
-- [x] Sprite do teleporte com animação
-- [ ] Sprite do boss
+- [ongoing] Sprite sheet de cada tipo de inimigo (Slime/Snake/FlowerPot OK; Flyer/Jumper/Spider/Turret/Penguin placeholder)
+- [x] Sprite dos collectibles (Puzzle1-4)
+- [x] Sprite do portal com animação (Portal1-4)
+- [ ] Sprite do boss (placeholder roxo)
 - [ ] Tilesets por estação
 - [ ] Partículas (`SKEmitterNode`) para tiro, morte, teleporte
 

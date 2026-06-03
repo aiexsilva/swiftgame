@@ -2,33 +2,55 @@
 //  GameScene.swift
 //  Secrets of Time
 //
-//  Test scene: player on a platform with on-screen controls.
+//  Cena principal do jogo. Gere o ciclo de jogo completo: carregamento de níveis,
+//  câmara, HUD, áudio, entrada táctil, detecção de colisões e transições de cena.
+//  Implementa SKPhysicsContactDelegate para reagir a contactos entre corpos físicos.
 //
 
 import SpriteKit
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
-    
-    //level manager
-    private var currentLevel = 5
-    private var levelData: Level!
 
+    // MARK: - Level management
+    var currentLevel = 1
+    /// Max HP the player starts the level with. Passed from scene to scene so
+    /// the extra hearts earned through portals survive level transitions.
+    var startingMaxHP: Int = 2
+
+    private var levelData: Level!
     private var player: PlayerNode!
     private var lastUpdateTime: TimeInterval = 0
 
-    // HUD buttons (children of camera so they stay fixed)
+    // MARK: - Portal / collectible
+    private var portal: PortalNode?
+    private var collectible: CollectibleNode?
+    private var collectiblesCollected = 0
+    private let collectiblesRequired = 1
+    private var isTransitioning = false
+
+    // MARK: - Boss
+    private var boss: BossNode?
+    private var barrier: BarrierNode?
+    private var bossAI: BossAIController?
+    private var bossZoomTriggered = false
+    private var bossZoomTriggerX: CGFloat = 0
+    private var bossLockedCameraX: CGFloat = 0
+    private var tentacleHitsCount = 0
+    private let tentacleHitsRequired = 5
+
+    // MARK: - HUD
     private var leftButton: SKShapeNode!
     private var rightButton: SKShapeNode!
     private var jumpButton: SKShapeNode!
     private var attackButton: SKShapeNode!
     private var healthHUD: HealthHUD!
-    /// Currently alive enemies. Populated at level start, drained as enemies die.
+
+    // MARK: - Enemies
     private var enemies: [EnemyNode] = []
-    /// Level configuration: factory closures that create a fresh, positioned
-    /// enemy each time the level (re)starts.
-    private var enemySpawns: [() -> EnemyNode] = []
+    private var enemyProjectiles: [EnemyProjectile] = []
     private var damageCooldown: TimeInterval = 0
 
+    // MARK: - State
     private var isGameOver: Bool = false
     private var gameOverOverlay: SKNode?
     private var isPaused_: Bool = false
@@ -37,27 +59,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var damageVignette: SKShapeNode?
     private var staff: StaffNode!
 
-    // NPC & dialogue
+    // MARK: - NPC & dialogue
     private var npc: NPCNode?
     private var dialogueBox: DialogueBox?
     private var interactionDwellTime: TimeInterval = 0
-    /// Seconds the player must stand still inside the NPC's range to trigger dialogue.
     private let interactionRequiredDwell: TimeInterval = 0.5
     private var isInDialogue: Bool = false
-    /// After a dialogue closes, the player must leave the NPC's range before
-    /// another dialogue can be triggered. This flag tracks that "rearm" state.
     private var npcReadyToTrigger: Bool = true
-    private let playerSpawn = CGPoint(x: 120, y: 200)
 
-
-    // World horizontal bounds. The camera stops scrolling when its edge hits these,
-    // and physical walls prevent the player from leaving.
+    // MARK: - World
     private var worldMinX: CGFloat = 0
     private var worldMaxX: CGFloat = 0
-
-    /// Size of the area actually visible on screen, in scene coordinates.
-    /// Accounts for aspectFill cropping.
     private var visibleSize: CGSize = .zero
+
+    // MARK: - Touch
+    private var leftTouch: UITouch?
+    private var rightTouch: UITouch?
+
+    // MARK: - Audio
+    // Música gerida pelo AudioManager (singleton) — não há node local de música.
+
+    // MARK: - Camera
+    private static let cameraZoom: CGFloat = 0.65
 
     private func computeVisibleSize(for view: SKView) -> CGSize {
         let viewSize = view.bounds.size
@@ -74,29 +97,24 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
-    // Track which finger is on which button
-    private var leftTouch: UITouch?
-    private var rightTouch: UITouch?
+    // MARK: - didMove
 
     override func didMove(to view: SKView) {
         backgroundColor = SKColor(red: 0.55, green: 0.78, blue: 0.95, alpha: 1.0)
-        
-        // Level order: 1 Primavera · 2 Verão · 3 Outono · 4 Inverno · 5 Vazio
+
         let background: String
         switch currentLevel {
-        case 1:  background = "forest_bg"   // Primavera
-        case 2:  background = "beachbg"     // Verão
-        case 3:  background = "aut_bg"      // Outono
-        case 4:  background = "winter_bg"   // Inverno
-        default: background = "bg_boss"     // Vazio
+        case 1:  background = "forest_bg"
+        case 2:  background = "beachbg"
+        case 3:  background = "aut_bg"
+        case 4:  background = "winter_bg"
+        default: background = "bg_boss"
         }
-        
+
         let bgTexture = SKTexture(imageNamed: background)
         bgTexture.filteringMode = .nearest
-
         let tileWidth = bgTexture.size().width
         let numTiles = Int(size.width * 3 / tileWidth) + 2
-
         for i in 0..<numTiles {
             let tile = SKSpriteNode(texture: bgTexture)
             tile.size = CGSize(width: tileWidth, height: size.height)
@@ -111,7 +129,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         visibleSize = computeVisibleSize(for: view)
 
-        // World extends from -size.width to 2*size.width (matches the ground).
         worldMinX = -size.width
         worldMaxX = size.width * 2
 
@@ -123,7 +140,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupHUD()
     }
 
-    private static let cameraZoom: CGFloat = 0.65  // <1 = zoom in
+    // MARK: - Camera
 
     private func setupCamera() {
         let cam = SKCameraNode()
@@ -133,20 +150,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         camera = cam
     }
 
+    // MARK: - Ground / Platforms
+
     private func setupGround() {
         let ground_level: String
         switch currentLevel {
-        case 1: ground_level = "floor"         // Primavera
-        case 2: ground_level = "sand"          // Verão
-        case 3: ground_level = "floor"         // Outono (reutiliza chão genérico)
-        case 4: ground_level = "groundwinter"  // Inverno
-        default: ground_level = "platform_boss"       // Boss
+        case 1: ground_level = "floor"
+        case 2: ground_level = "sand"
+        case 3: ground_level = "floor"
+        case 4: ground_level = "groundwinter"
+        default: ground_level = "platform_boss"
         }
         let texture = SKTexture(imageNamed: ground_level)
         texture.filteringMode = .nearest
         let tileWidth = texture.size().width
         let numTiles = Int(size.width * 3 / tileWidth) + 2
-
         for i in 0..<numTiles {
             let tile = SKSpriteNode(texture: texture)
             tile.anchorPoint = CGPoint(x: 0, y: 0)
@@ -168,15 +186,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(ground)
     }
 
-
     private func addPlatform(at position: CGPoint, size: CGSize) {
         let platform: String
         switch currentLevel {
-        case 1:  platform = "platformspring"  // Primavera
-        case 2:  platform = "platform_beach"  // Verão
-        case 3:  platform = "platformspring"  // Outono
-        case 4:  platform = "platformwinter"  // Inverno
-        default: platform = "platform_boss"   // Boss
+        case 1:  platform = "platformspring"
+        case 2:  platform = "platform_beach"
+        case 3:  platform = "platformspring"
+        case 4:  platform = "platformwinter"
+        default: platform = "platform_boss"
         }
         let p = SKSpriteNode(imageNamed: platform)
         p.texture?.filteringMode = .nearest
@@ -187,15 +204,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         body.isDynamic = false
         body.friction = 0.0
         body.categoryBitMask = PhysicsCategory.platform
-        body.collisionBitMask = PhysicsCategory.player
+        body.collisionBitMask = PhysicsCategory.player | PhysicsCategory.enemy
         body.contactTestBitMask = PhysicsCategory.player
         p.physicsBody = body
         addChild(p)
     }
 
+    // MARK: - Player
+
     private func setupPlayer() {
         player = PlayerNode()
-        player.position = playerSpawn
         player.onHealthChanged = { [weak self] current, max in
             self?.healthHUD?.setHealth(current: current, max: max)
             if current <= 0 { self?.triggerGameOver() }
@@ -203,9 +221,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(player)
 
         staff = StaffNode()
-        staff.position = player.position
         addChild(staff)
     }
+
+    // MARK: - World bounds
 
     private func setupWorldBounds() {
         let wallThickness: CGFloat = 20
@@ -227,124 +246,214 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(wall)
     }
 
-    /// Places the level's single NPC. Edit this to change the NPC for a level —
-    /// pass the dialogue lines, a name and a portrait image (any PNG bundled in
-    /// the project, e.g. `face_normal`).
-    private func setupNPC() {
-        let n = NPCNode(
-            name: "Old Sage",
-            portraitImageName: "face_normal",
-            lines: [
-                "Olá, viajante. Há muito não via gente por estas bandas.",
-                "Cuidado com as criaturas que vagueiam pelas plataformas.",
-                "Boa sorte na tua jornada."
-            ]
-        )
-        n.position = CGPoint(x: size.width * 0.18, y: 60)
-        addChild(n)
-        npc = n
-    }
+    // MARK: - Level loading
 
-    private func setupEnemies() {
-        // Level enemy roster — each entry is a factory that builds and positions
-        // one enemy. Add / remove entries to design the level.
-        let groundY: CGFloat = 60
-        enemySpawns = [
-            // 1. Slime patrols on the ground.
-            { [unowned self] in
-                let e = SlimeEnemy(minX: size.width * 0.40, maxX: size.width * 0.70)
-                e.position = CGPoint(x: size.width * 0.40, y: groundY)
-                return e
-            },
-            // 2. Flyer patrols mid-air.
-            { [unowned self] in
-                let e = FlyerEnemy(minX: size.width * 0.30, maxX: size.width * 0.65)
-                e.position = CGPoint(x: size.width * 0.30, y: 260)
-                return e
-            },
-            // 3. Jumper hops 2 forward / 2 back.
-            { [unowned self] in
-                let e = JumperEnemy()
-                e.position = CGPoint(x: size.width * 0.85, y: groundY + 40)
-                return e
-            },
-            // 4. Chaser idles until the player gets close.
-            { [unowned self] in
-                let e = SnakeEnemy(detectRange: 260)
-                e.position = CGPoint(x: size.width * 1.20, y: groundY)
-                return e
-            },
-            // 5. Immortal hazard — slow and unkillable.
-            { [unowned self] in
-                let e = ImmortalEnemy(minX: size.width * 1.40, maxX: size.width * 1.70)
-                e.position = CGPoint(x: size.width * 1.40, y: groundY)
-                return e
-            },
-            // 6. Flower pot trap — hovers above the middle platform, drops
-            // when the player walks across it.
-            { [unowned self] in
-                let e = FlowerPotEnemy()
-                // Middle platform is at (size.width * 0.55, 320). Place the
-                // pot directly above it with enough clearance for the player.
-                e.position = CGPoint(x: size.width * 0.55, y: 330)
-                return e
-            },
-        ]
-        spawnEnemies()
-    }
-
-    /// Removes any existing enemy nodes and spawns a fresh set from `enemySpawns`.
-    private func spawnEnemies() {
-        for enemy in enemies { enemy.removeFromParent() }
+    private func loadLevel(_ level: Int) {
+        // Clean up previous level entities
+        enemies.forEach { $0.removeFromParent() }
         enemies.removeAll()
+        npc?.removeFromParent()
+        npc = nil
+        portal?.removeFromParent(); portal = nil
+        collectible?.removeFromParent(); collectible = nil
+        collectiblesCollected = 0
+        boss?.removeFromParent(); boss = nil
+        barrier?.removeFromParent(); barrier = nil
+        bossAI?.stop(); bossAI = nil
+        bossZoomTriggered = false
+        childNode(withName: "cameraTrigger")?.removeFromParent()
 
-        for makeEnemy in enemySpawns {
-            let enemy = makeEnemy()
-            enemy.onDeath = { [weak self] dead in
+        currentLevel = level
+
+        switch level {
+        case 1: levelData = Levels.level1(size: size)
+        case 2: levelData = Levels.level2(size: size)
+        case 3: levelData = Levels.level3(size: size)
+        case 4: levelData = Levels.level4(size: size)
+        default: levelData = Levels.level5(size: size)
+        }
+
+        player.position = levelData.playerSpawn
+        player.physicsBody?.velocity = .zero
+        player.stopMoving()
+        player.setMaxHP(startingMaxHP)   // restore carried-over max HP, refill current HP
+        damageCooldown = 0.8
+
+        for p in levelData.platforms {
+            addPlatform(at: p.0, size: p.1)
+        }
+
+        for (imageName, position) in levelData.decorations {
+            let sprite = SKSpriteNode(imageNamed: imageName)
+            sprite.texture?.filteringMode = .nearest
+            sprite.anchorPoint = CGPoint(x: 0.5, y: 0.0)
+            sprite.position = position
+            sprite.zPosition = -150   // behind ground/platforms/enemies, just in front of background (-200)
+            addChild(sprite)
+        }
+
+        enemies = levelData.enemies.map { factory in
+            let e = factory()
+            e.onDeath = { [weak self] dead in
                 self?.enemies.removeAll { $0 === dead }
+                self?.run(SKAction.playSoundFileNamed("enemy-kill.mp3", waitForCompletion: false))
             }
-            addChild(enemy)
-            enemies.append(enemy)
+            // Wire turret projectile spawning
+            if let turret = e as? TurretEnemy {
+                turret.onFireProjectile = { [weak self] proj in
+                    self?.addChild(proj)
+                    self?.enemyProjectiles.append(proj)
+                    self?.playSound("explosion_3.mp3", volume: 0.35)
+                }
+            }
+            return e
+        }
+        enemies.forEach { addChild($0) }
+
+        if let npcNode = levelData.npc, let npcPos = levelData.npcPosition {
+            npcNode.position = npcPos
+            addChild(npcNode)
+            npc = npcNode
+        }
+
+        // Collectible
+        if let pos = levelData.collectiblePosition {
+            let c = CollectibleNode(at: pos, pieceIndex: currentLevel)
+            addChild(c)
+            collectible = c
+        }
+
+        // Portal
+        if let pos = levelData.portalPosition {
+            let p = PortalNode(at: pos)
+            p.setCounter(collected: 0, required: collectiblesRequired)
+            addChild(p)
+            portal = p
+        }
+
+        // Boss arena (level 5)
+        if level == 5 {
+            setupBoss()
         }
     }
 
-    /// Repopulates the enemy list, resets the player, and clears the game-over state.
-    func restartLevel() {
-        spawnEnemies()
+    // MARK: - Boss setup
 
-        // Reset player
-        player.position = playerSpawn
-        player.physicsBody?.velocity = .zero
-        player.stopMoving()
-        player.resetHealth()
+    private func setupBoss() {
+        tentacleHitsCount = 0
 
-        // Clear damage cooldown & overlay
-        damageCooldown = 0
-        gameOverOverlay?.removeFromParent()
-        gameOverOverlay = nil
-        isGameOver = false
-        physicsWorld.speed = 1
-        lastUpdateTime = 0
-        leftTouch = nil
-        rightTouch = nil
+        // -- Trigger (visible orange line) --
+        bossZoomTriggerX = 260
+        bossLockedCameraX = 590
+        let trigger = SKShapeNode(rectOf: CGSize(width: 8, height: 700))
+        trigger.fillColor = SKColor.orange.withAlphaComponent(0.5)
+        trigger.strokeColor = .orange
+        trigger.lineWidth = 2
+        trigger.position = CGPoint(x: bossZoomTriggerX, y: 350)
+        trigger.name = "cameraTrigger"
+        trigger.zPosition = 90
+        addChild(trigger)
+
+        // -- Barrier --
+        let barrierNode = BarrierNode(at: CGPoint(x: 700, y: 0))
+        addChild(barrierNode)
+        barrier = barrierNode
+
+        // -- Boss --
+        let bossNode = BossNode(at: CGPoint(x: 920, y: 60))
+        bossNode.onDefeat = { [weak self] in
+            self?.bossAI?.stop()
+            self?.showBossVictory()
+        }
+        addChild(bossNode)
+        boss = bossNode
+
+        // -- 3×3 grid filling the player side of the arena --
+        // Columns 105, 315, 525 (width 210 each → covers x=0..630)
+        // Rows aligned with where the player actually stands:
+        //   row0 = ground (~y=40), row1 = platform y=180 (top=192), row2 = platform y=350 (top=362)
+        let cols: [CGFloat] = [105, 315, 525]
+        let rows: [CGFloat] = [90, 215, 380]
+        let cellSize = CGSize(width: 210, height: 120)
+        let grid: [[CGPoint]] = rows.map { y in cols.map { x in CGPoint(x: x, y: y) } }
+
+        let ai = BossAIController(gridCells: grid, cellSize: cellSize, scene: self)
+        bossAI = ai
+        // AI starts only when the player crosses the camera trigger
     }
+
+    // MARK: - Level transition
+
+    private func transitionToNextLevel() {
+        guard let view = view, let cam = camera else { return }
+        isTransitioning = true
+        player.stopMoving()
+        leftTouch = nil; rightTouch = nil
+        physicsWorld.speed = 0   // congela inimigos e física durante a transição
+
+        run(SKAction.playSoundFileNamed("upgrade_levelup.mp3", waitForCompletion: false))
+
+        // Recompensa: +1 HP máximo por nível completado
+        player.increaseMaxHP(by: 1)
+        let nextMaxHP = player.maxHitPoints   // guardado APÓS o aumento para passar à cena seguinte
+        run(SKAction.playSoundFileNamed("woosh.mp3", waitForCompletion: false))
+
+        // Mostra overlay com as peças do puzzle recolhidas até agora
+        let overlay = PortalTransitionOverlay(visibleSize: visibleSize, levelsCompleted: currentLevel)
+        overlay.alpha = 0
+        cam.addChild(overlay)
+        overlay.run(.fadeIn(withDuration: 0.3))
+
+        // Nível 4 tem mais tempo de espera porque o puzzle fica completo
+        let holdDuration: TimeInterval = currentLevel == 4 ? 3.5 : 2.5
+        run(.sequence([
+            .wait(forDuration: holdDuration),
+            .run { [weak self] in  // [weak self] evita retain cycle na closure
+                guard let self = self else { return }
+                let next = self.currentLevel + 1
+                if next > 5 {
+                    self.goToMainMenu()
+                    return
+                }
+                let scene = GameScene(size: self.size)
+                scene.scaleMode = self.scaleMode
+                scene.currentLevel = next
+                scene.startingMaxHP = nextMaxHP
+                view.presentScene(scene, transition: SKTransition.fade(with: .black, duration: 0.8))
+            }
+        ]))
+    }
+
+    // MARK: - Boss victory
+
+    private func showBossVictory() {
+        guard let cam = camera else { return }
+        run(SKAction.playSoundFileNamed("meow.mp3", waitForCompletion: false))
+        let overlay = BossDefeatOverlay(visibleSize: visibleSize)
+        overlay.onComplete = { [weak self] in
+            self?.goToMainMenu()
+        }
+        cam.addChild(overlay)
+        overlay.present()
+    }
+
+    // MARK: - Game over / restart
 
     private func triggerGameOver() {
         guard !isGameOver else { return }
         isGameOver = true
         player.stopMoving()
         player.physicsBody?.velocity = .zero
-        physicsWorld.speed = 0
+        run(SKAction.playSoundFileNamed("player-death.mp3", waitForCompletion: false))
         showGameOverOverlay()
+        physicsWorld.speed = 0
+        self.speed = 0          // stop boss AI actions after overlay is queued
     }
 
     private func showGameOverOverlay() {
         guard let cam = camera else { return }
         let overlay = SKNode()
         overlay.zPosition = 2000
-
-        let halfW = visibleSize.width / 2
-        let halfH = visibleSize.height / 2
 
         let bg = SKShapeNode(rectOf: CGSize(width: visibleSize.width, height: visibleSize.height))
         bg.fillColor = SKColor(white: 0, alpha: 0.6)
@@ -365,7 +474,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             name: "menuButton", label: "MAIN MENU", position: CGPoint(x: 0, y: -190)
         ))
 
-        _ = halfW; _ = halfH
         cam.addChild(overlay)
         gameOverOverlay = overlay
     }
@@ -385,110 +493,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         button.addChild(text)
         return button
     }
-    
-    
-    private func loadLevel(_ level: Int) {
 
-        enemies.forEach { $0.removeFromParent() }
-        enemies.removeAll()
-
-        npc?.removeFromParent()
-        npc = nil
-
-        currentLevel = level
-
-        if level == 1 {
-            levelData = Levels.level1(size: size)
-        } else if level == 2 {
-            levelData = Levels.level2(size: size)
-        } else if level == 3 {
-            levelData = Levels.level3(size: size)
-        }else if level == 4 {
-            levelData = Levels.level4(size: size)
-        }else{
-            levelData = Levels.level5(size: size)
-        }
-
-        player.position = levelData.playerSpawn
-        player.physicsBody?.velocity = .zero
-        player.stopMoving()
-        player.resetHealth()
-        damageCooldown = 0.8
-
-        for p in levelData.platforms {
-            addPlatform(at: p.0, size: p.1)
-        }
-        
-        for (imageName, position) in levelData.decorations {
-            let sprite = SKSpriteNode(imageNamed: imageName)
-            sprite.texture?.filteringMode = .nearest
-            sprite.anchorPoint = CGPoint(x: 0.5, y: 0.0)
-            sprite.position = position
-            sprite.zPosition = 1
-            addChild(sprite)
-        }
-
-        enemies = levelData.enemies.map { $0() }
-        enemies.forEach { addChild($0) }
-
-        if let npcNode = levelData.npc {
-            if let npcPosition = levelData.npcPosition {
-                npcNode.position = npcPosition
-            }
-            addChild(npcNode)
-            npc = npcNode
-        }
+    func restartLevel() {
+        guard let view = view else { return }
+        let scene = GameScene(size: size)
+        scene.scaleMode = scaleMode
+        scene.currentLevel = currentLevel
+        view.presentScene(scene, transition: SKTransition.fade(with: .black, duration: 0.3))
     }
 
-    // MARK: - NPC interaction
-
-    private func updateNPCInteraction(deltaTime: TimeInterval) {
-        guard let npc = npc, !isInDialogue else { return }
-        let dx = player.position.x - npc.position.x
-        let inRange = abs(dx) <= npc.interactionRange
-
-        // Re-arm once the player walks out of range.
-        if !inRange { npcReadyToTrigger = true }
-
-        let stopped = abs(player.physicsBody?.velocity.dx ?? 0) < 5
-        if inRange && stopped && npcReadyToTrigger {
-            interactionDwellTime += deltaTime
-            if interactionDwellTime >= interactionRequiredDwell {
-                openDialogue(with: npc)
-            }
-        } else {
-            interactionDwellTime = 0
-        }
-    }
-
-    private func openDialogue(with npc: NPCNode) {
-        guard let cam = camera, !isInDialogue else { return }
-        isInDialogue = true
-        interactionDwellTime = 0
-        player.stopMoving()
-        leftTouch = nil
-        rightTouch = nil
-
-        let box = DialogueBox(visibleSize: visibleSize)
-        box.show(name: npc.displayName, portraitImageName: npc.portraitImageName, lines: npc.lines)
-        box.onClose = { [weak self] in
-            self?.dialogueBox = nil
-            self?.isInDialogue = false
-            // Block re-triggering until the player leaves the NPC's range.
-            self?.npcReadyToTrigger = false
-            self?.lastUpdateTime = 0   // avoid dt spike
-        }
-        cam.addChild(box)
-        dialogueBox = box
-    }
+    // MARK: - Pause
 
     private func pauseGame() {
         guard !isPaused_, !isGameOver else { return }
         isPaused_ = true
         player.stopMoving()
-        leftTouch = nil
-        rightTouch = nil
-        physicsWorld.speed = 0
+        leftTouch = nil; rightTouch = nil
+        physicsWorld.speed = 0   // congela toda a física (inimigos, projéteis, etc.)
+        self.speed = 0           // pausa todas as SKActions (IA do boss, animações)
+        AudioManager.shared.pause()  // pausa a música de fundo (AVAudioPlayer)
         showPauseOverlay()
     }
 
@@ -496,9 +519,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard isPaused_ else { return }
         isPaused_ = false
         physicsWorld.speed = 1
+        self.speed = 1
+        AudioManager.shared.resume()  // retoma a música a partir do ponto onde parou
         pauseOverlay?.removeFromParent()
         pauseOverlay = nil
-        lastUpdateTime = 0   // avoid a big dt spike on resume
+        lastUpdateTime = 0  // evita delta-time gigante no primeiro frame após resume
     }
 
     private func showPauseOverlay() {
@@ -532,10 +557,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         pauseOverlay = overlay
     }
 
+    // MARK: - Damage vignette
+
     private func flashDamageVignette() {
         guard let cam = camera else { return }
         damageVignette?.removeFromParent()
-
         let vignette = SKShapeNode(rectOf: visibleSize)
         vignette.fillColor = .clear
         vignette.strokeColor = SKColor.red
@@ -544,13 +570,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         vignette.zPosition = 1500
         cam.addChild(vignette)
         damageVignette = vignette
-
         vignette.run(.sequence([
             .fadeAlpha(to: 0.7, duration: 0.06),
             .fadeAlpha(to: 0.0, duration: 0.25),
             .removeFromParent()
         ]))
     }
+
+    private func applyPlayerDamage(knockbackDir: CGFloat) {
+        guard damageCooldown <= 0 else { return }
+        player.applyHitKnockback(direction: knockbackDir)
+        player.takeDamage()
+        flashDamageVignette()
+        run(SKAction.playSoundFileNamed("groan.mp3", waitForCompletion: false))
+        damageCooldown = 1.0
+    }
+
+    // MARK: - Main menu
 
     private func goToMainMenu() {
         guard let view = self.view else { return }
@@ -568,11 +604,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let halfH = visibleSize.height / 2
         let bottomY = -halfH + 140
 
-        leftButton = makeButton(label: "◀", position: CGPoint(x: -halfW + 110, y: bottomY))
+        leftButton = makeButton(label: "▲", labelRotation: .pi / 2,
+                                position: CGPoint(x: -halfW + 110, y: bottomY))
         leftButton.name = "leftButton"
         cam.addChild(leftButton)
 
-        rightButton = makeButton(label: "▶", position: CGPoint(x: -halfW + 290, y: bottomY))
+        rightButton = makeButton(label: "▲", labelRotation: -.pi / 2,
+                                 position: CGPoint(x: -halfW + 290, y: bottomY))
         rightButton.name = "rightButton"
         cam.addChild(rightButton)
 
@@ -600,10 +638,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         cam.addChild(pauseButton)
 
         healthHUD = HealthHUD()
-        healthHUD.position = CGPoint(
-            x: -halfW + 80,
-            y: halfH - 60
-        )
+        healthHUD.position = CGPoint(x: -halfW + 80, y: halfH - 60)
         healthHUD.zPosition = 1000
         cam.addChild(healthHUD)
         healthHUD.setHealth(current: player.hitPoints, max: player.maxHitPoints)
@@ -611,26 +646,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private static let buttonRadius: CGFloat = 80
 
-    private func makeButton(label: String, position: CGPoint) -> SKShapeNode {
+    private func makeButton(label: String, labelRotation: CGFloat = 0,
+                            position: CGPoint) -> SKShapeNode {
         let node = SKShapeNode(circleOfRadius: GameScene.buttonRadius)
         node.fillColor = SKColor(white: 1.0, alpha: 0.25)
         node.strokeColor = SKColor(white: 1.0, alpha: 0.6)
         node.lineWidth = 2
         node.position = position
         node.zPosition = 1000
-
         let text = SKLabelNode(text: label)
         text.fontName = "AvenirNext-Bold"
         text.fontSize = 56
         text.fontColor = .white
         text.verticalAlignmentMode = .center
         text.horizontalAlignmentMode = .center
+        text.zRotation = labelRotation
         node.addChild(text)
         return node
     }
 
-    /// Returns the name of the HUD button hit by `point` (in camera space),
-    /// using a strict circular hit test so the hitbox matches the visible button.
     private func hudButtonHit(at point: CGPoint) -> String? {
         let buttons: [SKShapeNode?] = [leftButton, rightButton, jumpButton, attackButton]
         for case let button? in buttons {
@@ -643,11 +677,74 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         return nil
     }
 
+    // MARK: - Audio
+
+    /// Reproduz um efeito sonoro com volume controlado.
+    /// Para sons a volume pleno usa SKAction (menor overhead).
+    /// Para volume reduzido usa SKAudioNode temporário.
+    private func playSound(_ name: String, volume: Float = 1.0) {
+        if volume >= 0.99 {
+            run(SKAction.playSoundFileNamed(name, waitForCompletion: false))
+            return
+        }
+        let node = SKAudioNode(fileNamed: name)
+        node.autoplayLooped = false
+        node.isPositional = false
+        addChild(node)
+        node.run(.sequence([
+            .changeVolume(to: volume, duration: 0),
+            .play(),
+            .wait(forDuration: 3.0),
+            .removeFromParent()
+        ]))
+    }
+
+    // MARK: - NPC interaction
+
+    private func updateNPCInteraction(deltaTime: TimeInterval) {
+        guard let npc = npc, !isInDialogue else { return }
+        let dx = player.position.x - npc.position.x
+        let inRange = abs(dx) <= npc.interactionRange
+
+        if !inRange { npcReadyToTrigger = true }
+
+        let stopped = abs(player.physicsBody?.velocity.dx ?? 0) < 5
+        if inRange && stopped && npcReadyToTrigger {
+            interactionDwellTime += deltaTime
+            if interactionDwellTime >= interactionRequiredDwell {
+                openDialogue(with: npc)
+            }
+        } else {
+            interactionDwellTime = 0
+        }
+    }
+
+    private func openDialogue(with npc: NPCNode) {
+        guard let cam = camera, !isInDialogue else { return }
+        isInDialogue = true
+        interactionDwellTime = 0
+        player.stopMoving()
+        leftTouch = nil; rightTouch = nil
+
+        run(SKAction.playSoundFileNamed("chime.mp3", waitForCompletion: false))
+        run(SKAction.playSoundFileNamed("meow.mp3", waitForCompletion: false))
+
+        let box = DialogueBox(visibleSize: visibleSize)
+        box.show(name: npc.displayName, portraitImageName: npc.portraitImageName, lines: npc.lines)
+        box.onClose = { [weak self] in
+            self?.dialogueBox = nil
+            self?.isInDialogue = false
+            self?.npcReadyToTrigger = false
+            self?.lastUpdateTime = 0
+        }
+        cam.addChild(box)
+        dialogueBox = box
+    }
+
     // MARK: - Touch handling
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         if isInDialogue {
-            // Any tap advances the dialogue.
             dialogueBox?.advance()
             return
         }
@@ -656,21 +753,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 guard let overlay = pauseOverlay else { return }
                 let location = touch.location(in: overlay)
                 if let resume = overlay.childNode(withName: "resumeButton") as? SKShapeNode,
-                   resume.contains(location) {
-                    resumeGame()
-                    return
-                }
+                   resume.contains(location) { resumeGame(); return }
                 if let restart = overlay.childNode(withName: "restartButton") as? SKShapeNode,
-                   restart.contains(location) {
-                    resumeGame()
-                    restartLevel()
-                    return
-                }
+                   restart.contains(location) { resumeGame(); restartLevel(); return }
                 if let menu = overlay.childNode(withName: "menuButton") as? SKShapeNode,
-                   menu.contains(location) {
-                    goToMainMenu()
-                    return
-                }
+                   menu.contains(location) { goToMainMenu(); return }
             }
             return
         }
@@ -679,15 +766,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 guard let overlay = gameOverOverlay else { return }
                 let location = touch.location(in: overlay)
                 if let restart = overlay.childNode(withName: "restartButton") as? SKShapeNode,
-                   restart.contains(location) {
-                    restartLevel()
-                    return
-                }
+                   restart.contains(location) { restartLevel(); return }
                 if let menu = overlay.childNode(withName: "menuButton") as? SKShapeNode,
-                   menu.contains(location) {
-                    goToMainMenu()
-                    return
-                }
+                   menu.contains(location) { goToMainMenu(); return }
             }
             return
         }
@@ -695,14 +776,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             guard let cam = camera else { return }
             let location = touch.location(in: cam)
 
-            if pauseButton.contains(location) {
-                pauseGame()
-                return
-            }
+            if pauseButton.contains(location) { pauseGame(); return }
 
-            let buttonName = hudButtonHit(at: location)
-
-            switch buttonName {
+            switch hudButtonHit(at: location) {
             case "leftButton":
                 leftTouch = touch
                 player.startMoving(direction: -1)
@@ -710,11 +786,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 rightTouch = touch
                 player.startMoving(direction: 1)
             case "jumpButton":
-                player.jump()
-            case "attackButton":
-                if let hitbox = player.performAttack() {
-                    addChild(hitbox)
+                if player.jump() {
+                    run(SKAction.playSoundFileNamed("jumping-sound-effect.mp3", waitForCompletion: false))
                 }
+            case "attackButton":
+                if let hitbox = player.performAttack() { addChild(hitbox) }
             default:
                 break
             }
@@ -745,22 +821,54 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = lastUpdateTime == 0 ? 0 : currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
-        if isGameOver || isPaused_ || isInDialogue { return }
+        // Suspende todo o update lógico durante game over, pausa, diálogo ou transição de nível.
+        if isGameOver || isPaused_ || isInDialogue || isTransitioning { return }
 
         player.update(deltaTime: dt)
         staff.update(deltaTime: dt, playerPosition: player.position, facingRight: player.facingRight)
         staff.isHidden = player.isAttacking
-        for enemy in enemies { enemy.update(deltaTime: dt, playerPosition: player.position) }
+
+        for enemy in enemies {
+            enemy.update(deltaTime: dt, playerPosition: player.position)
+        }
+
+        // Clean up expired projectiles
+        enemyProjectiles.removeAll { $0.parent == nil }
+
         if damageCooldown > 0 { damageCooldown -= dt }
+
         updateNPCInteraction(deltaTime: dt)
 
         if let cam = camera {
-            let halfVisW = visibleSize.width * GameScene.cameraZoom / 2
-            let halfVisH = visibleSize.height * GameScene.cameraZoom / 2
-            let minCamX = worldMinX + halfVisW
-            let maxCamX = worldMaxX - halfVisW
-            let clampedX = min(max(player.position.x, minCamX), maxCamX)
-            cam.position = CGPoint(x: clampedX, y: max(player.position.y, halfVisH))
+            // Current scale used for half-visible calculations
+            let currentScale = cam.xScale   // may differ from cameraZoom after boss lerp
+            let halfVisH = visibleSize.height * currentScale / 2
+            let camY = max(player.position.y, halfVisH)  // never show below y=0
+
+            if currentLevel == 5, bossZoomTriggered {
+                // Camera locked: X fixed on arena centre, Y follows player (clamped ≥ 0)
+                cam.position = CGPoint(x: bossLockedCameraX, y: camY)
+            } else {
+                let halfVisW = visibleSize.width  * GameScene.cameraZoom / 2
+                let halfVisH2 = visibleSize.height * GameScene.cameraZoom / 2
+                let minCamX = worldMinX + halfVisW
+                let maxCamX = worldMaxX - halfVisW
+                let clampedX = min(max(player.position.x, minCamX), maxCamX)
+                cam.position = CGPoint(x: clampedX, y: max(player.position.y, halfVisH2))
+            }
+
+            // Trigger: zoom out + lock camera + start boss AI
+            if currentLevel == 5, !bossZoomTriggered,
+               player.position.x >= bossZoomTriggerX {
+                bossZoomTriggered = true
+                cam.run(.scale(to: 1.15, duration: 1.5), withKey: "bossZoom")
+                cam.run(.moveTo(x: bossLockedCameraX, duration: 1.5), withKey: "bossMove")
+                bossAI?.start()
+                run(.sequence([
+                    .wait(forDuration: 0.8),
+                    .playSoundFileNamed("meow.mp3", waitForCompletion: false)
+                ]))
+            }
         }
     }
 
@@ -768,40 +876,99 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     func didBegin(_ contact: SKPhysicsContact) {
         let mask = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
+
+        // -- Platform / ground landing --
         if mask == (PhysicsCategory.player | PhysicsCategory.platform)
             || mask == (PhysicsCategory.player | PhysicsCategory.ground) {
-            // Only count as "ground" if the player is landing on top of it
-            let playerBody = contact.bodyA.categoryBitMask == PhysicsCategory.player ? contact.bodyA : contact.bodyB
-            let otherBody  = contact.bodyA.categoryBitMask == PhysicsCategory.player ? contact.bodyB : contact.bodyA
-            if let playerNode = playerBody.node, let platformNode = otherBody.node,
-               playerNode.position.y > platformNode.position.y {
+            let playerBody = contact.bodyA.categoryBitMask == PhysicsCategory.player
+                ? contact.bodyA : contact.bodyB
+            let otherBody  = contact.bodyA.categoryBitMask == PhysicsCategory.player
+                ? contact.bodyB : contact.bodyA
+            if let pNode = playerBody.node, let oNode = otherBody.node,
+               pNode.position.y > oNode.position.y {
                 player.didBeginContactWithPlatform()
             }
-        } else if mask == (PhysicsCategory.enemy | PhysicsCategory.ground) {
-            // A flower pot (or other dropping enemy) hits the floor → land it.
-            let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy ? contact.bodyA : contact.bodyB
-            if let pot = enemyBody.node as? FlowerPotEnemy {
-                pot.land()
-            }
+
+        // -- FlowerPot lands --
+        } else if mask == (PhysicsCategory.enemy | PhysicsCategory.ground)
+               || mask == (PhysicsCategory.enemy | PhysicsCategory.platform) {
+            let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy
+                ? contact.bodyA : contact.bodyB
+            if let pot = enemyBody.node as? FlowerPotEnemy { pot.land() }
+
+        // -- Player ↔ Enemy --
         } else if mask == (PhysicsCategory.player | PhysicsCategory.enemy) {
-            if damageCooldown <= 0 {
-                let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy ? contact.bodyA : contact.bodyB
-                let knockbackDir: CGFloat = {
-                    if let enemyNode = enemyBody.node {
-                        return player.position.x >= enemyNode.position.x ? 1 : -1
-                    }
-                    return player.facingRight ? -1 : 1
-                }()
-                player.applyHitKnockback(direction: knockbackDir)
-                player.takeDamage()
-                flashDamageVignette()
-                damageCooldown = 1.0
+            let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy
+                ? contact.bodyA : contact.bodyB
+            let dir: CGFloat = {
+                if let eNode = enemyBody.node {
+                    return player.position.x >= eNode.position.x ? 1 : -1
+                }
+                return player.facingRight ? -1 : 1
+            }()
+            applyPlayerDamage(knockbackDir: dir)
+
+        // -- Player ↔ Enemy projectile --
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.enemyProjectile) {
+            let projBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemyProjectile
+                ? contact.bodyA : contact.bodyB
+            let dir: CGFloat = player.facingRight ? -1 : 1
+            applyPlayerDamage(knockbackDir: dir)
+            projBody.node?.removeFromParent()
+
+        // -- Player ↔ Collectible --
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.collectible) {
+            guard collectible != nil else { return }
+            collectible?.collect()
+            collectible = nil
+            collectiblesCollected += 1
+            player.heal(1)
+            portal?.setCounter(collected: collectiblesCollected, required: collectiblesRequired)
+            if collectiblesCollected >= collectiblesRequired {
+                portal?.isUnlocked = true
+                run(SKAction.playSoundFileNamed("upgrade_levelup.mp3", waitForCompletion: false))
+            } else {
+                run(SKAction.playSoundFileNamed("coin-catch.mp3", waitForCompletion: false))
             }
+
+        // -- Player ↔ Portal --
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.portal) {
+            guard portal?.isUnlocked == true, !isTransitioning else { return }
+            transitionToNextLevel()
+
+        // -- Player attack ↔ Enemy --
         } else if mask == (PhysicsCategory.projectile | PhysicsCategory.enemy) {
-            let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy ? contact.bodyA : contact.bodyB
+            let enemyBody = contact.bodyA.categoryBitMask == PhysicsCategory.enemy
+                ? contact.bodyA : contact.bodyB
             if let enemy = enemyBody.node as? EnemyNode {
                 enemy.takeDamage()
             }
+
+        // -- Player attack ↔ Boss attack (tentacle/pata) → counts toward barrier --
+        } else if mask == (PhysicsCategory.projectile | PhysicsCategory.bossAttack) {
+            // O tentáculo/pata NÃO é destruído — continua ativo no ecrã.
+            // Apenas contamos o acerto para efeitos de progressão da barreira.
+            tentacleHitsCount += 1
+            if tentacleHitsCount >= tentacleHitsRequired {
+                tentacleHitsCount = 0
+                barrier?.registerHit()
+                barrier?.registerHit()
+                barrier?.registerHit()  // 3 hits = break immediately
+            }
+
+        // -- Player attack ↔ Boss body --
+        } else if mask == (PhysicsCategory.projectile | PhysicsCategory.bossBody) {
+            if barrier?.isBroken ?? true {
+                boss?.takeFinalHit()
+            }
+
+        // -- Player ↔ Boss attack --
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.bossAttack) {
+            applyPlayerDamage(knockbackDir: player.facingRight ? -1 : 1)
+
+        // -- Player ↔ Boss body (direct contact) --
+        } else if mask == (PhysicsCategory.player | PhysicsCategory.bossBody) {
+            applyPlayerDamage(knockbackDir: player.position.x < (boss?.position.x ?? 0) ? -1 : 1)
         }
     }
 
@@ -809,7 +976,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let mask = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
         if mask == (PhysicsCategory.player | PhysicsCategory.platform)
             || mask == (PhysicsCategory.player | PhysicsCategory.ground) {
-            player.didEndContactWithPlatform()
+            // Mirror the begin check: only count contacts where the player landed
+            // on TOP of the surface. Without this, walking into the side of a
+            // platform decrements groundContacts even though begin never incremented
+            // it, driving the counter to 0 and locking the player in falling state.
+            let playerBody = contact.bodyA.categoryBitMask == PhysicsCategory.player
+                ? contact.bodyA : contact.bodyB
+            let otherBody  = contact.bodyA.categoryBitMask == PhysicsCategory.player
+                ? contact.bodyB : contact.bodyA
+            if let pNode = playerBody.node, let oNode = otherBody.node,
+               pNode.position.y >= oNode.position.y {
+                player.didEndContactWithPlatform()
+            }
         }
     }
 }

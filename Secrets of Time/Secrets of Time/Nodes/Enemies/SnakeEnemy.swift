@@ -1,8 +1,15 @@
+//
+//  SnakeEnemy.swift
+//  Secrets of Time
+//
+//  Inimigo Cobra do Nível 2 (Verão). Fica imóvel com animação idle até o
+//  jogador entrar no raio de deteção, depois persegue horizontalmente.
+//  As animações usam ping-pong (1→N→1) para um loop suave. Requer 4 ataques.
+//
+
 import SpriteKit
 
-/// Snake enemy that stays idle until the player enters its detection range,
-/// then chases the player horizontally. Plays an idle animation while
-/// waiting, a walk animation while chasing, and a death frame when killed.
+/// Cobra que persegue o jogador quando está dentro do raio de deteção.
 class SnakeEnemy: EnemyNode {
 
     private let chaseSpeed: CGFloat = 130

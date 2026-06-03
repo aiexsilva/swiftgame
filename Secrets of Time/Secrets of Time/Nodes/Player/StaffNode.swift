@@ -1,8 +1,15 @@
+//
+//  StaffNode.swift
+//  Secrets of Time
+//
+//  Cajado mágico flutuante que acompanha o jogador com um ligeiro atraso (lerp)
+//  e uma oscilação vertical suave (bob). É filho direto da cena — não do jogador
+//  — para poder ser interpolado de forma independente. Fica oculto durante o ataque.
+//
+
 import SpriteKit
 
-/// Floating wooden staff that follows the player with a slight lag and a
-/// gentle vertical bob. Lives as a sibling of the player in the scene so it
-/// can be interpolated independently.
+/// Cajado que segue o jogador com atraso e oscilação vertical.
 class StaffNode: SKSpriteNode {
 
     /// Horizontal offset from the player (mirrored when facing left).

@@ -1,6 +1,15 @@
+//
+//  SlimeEnemy.swift
+//  Secrets of Time
+//
+//  Inimigo Slime do Nível 1 (Primavera). Patrulha horizontalmente entre dois
+//  pontos no chão, invertendo a direção ao atingir os limites. Afetado pela
+//  gravidade. Eliminado com 1 ataque.
+//
+
 import SpriteKit
 
-/// Slime that patrols horizontally between two x bounds on the ground.
+/// Slime que patrulha horizontalmente entre dois limites no chão.
 class SlimeEnemy: EnemyNode {
 
     private let moveSpeed: CGFloat = 80.0

@@ -1,8 +1,15 @@
+//
+//  DialogueBox.swift
+//  Secrets of Time
+//
+//  Caixa de diálogo fixa no topo do ecrã (filho da câmara). Mostra o retrato,
+//  o nome e as falas do NPC uma de cada vez. Cada toque avança para a linha
+//  seguinte; fecha automaticamente após a última fala e chama `onClose`.
+//
+
 import SpriteKit
 
-/// Bottom-screen dialogue overlay. Lives as a child of the camera so it
-/// stays fixed on screen. Tap anywhere on the box to advance lines; closes
-/// automatically after the last one.
+/// Caixa de diálogo com retrato, nome e falas do NPC.
 class DialogueBox: SKNode {
 
     /// Called once the player has dismissed the last line.

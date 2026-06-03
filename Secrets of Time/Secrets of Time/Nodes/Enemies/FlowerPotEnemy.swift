@@ -1,11 +1,18 @@
+//
+//  FlowerPotEnemy.swift
+//  Secrets of Time
+//
+//  Armadilha em forma de vaso do Nível 1 (Primavera). Flutua no ar em idle,
+//  cai quando o jogador passa por baixo, causa dano durante a queda e torna-se
+//  um adereço inerte ao aterrar. A queda é "antecipada" — usa a velocidade
+//  horizontal do jogador para calcular onde vai estar, disparando a queda
+//  ligeiramente antes de o jogador estar diretamente por baixo.
+//  Imortal: não pode ser destruído pelo jogador.
+//
+
 import SpriteKit
 
-/// Trap-style enemy: idles in mid-air, falls when the player walks under it,
-/// damages on impact mid-fall, and turns into a static prop after landing.
-///
-/// The fall is "anticipated" — a short look-ahead based on the player's
-/// horizontal velocity triggers the drop slightly before the player is
-/// directly under the pot, giving the trap a chance to actually land on them.
+/// Armadilha-vaso: cai quando o jogador passa por baixo, causa dano e fica inerte.
 class FlowerPotEnemy: EnemyNode {
 
     // MARK: - Tuning

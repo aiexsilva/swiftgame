@@ -1,7 +1,15 @@
+//
+//  HealthHUD.swift
+//  Secrets of Time
+//
+//  HUD de saúde do jogador: mostra os pontos de vida como ícones de coração.
+//  Corações ativos ficam totalmente visíveis; corações perdidos ficam translúcidos.
+//  Deve ser adicionado como filho da câmara e atualizado via setHealth(current:max:).
+//
+
 import SpriteKit
 
-/// HUD that displays the player's hit points as small heart icons.
-/// Add as child of the camera and call `setHealth(current:max:)` when HP changes.
+/// HUD de corações que representa os pontos de vida do jogador.
 class HealthHUD: SKNode {
 
     private let iconSize: CGFloat = 32
@@ -35,9 +43,10 @@ class HealthHUD: SKNode {
                 heart.colorBlendFactor = 0
                 heart.alpha = 1.0
             } else {
-                heart.color = .black
-                heart.colorBlendFactor = 0.75
-                heart.alpha = 0.5
+                // Clearly visible empty-slot heart: white tint, translucent
+                heart.color = .white
+                heart.colorBlendFactor = 0.0
+                heart.alpha = 0.25
             }
         }
     }

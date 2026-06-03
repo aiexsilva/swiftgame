@@ -1,8 +1,16 @@
+//
+//  PortalNode.swift
+//  Secrets of Time
+//
+//  Portal de saída do nível. Começa bloqueado (translúcido) e fica totalmente
+//  ativo depois de o jogador recolher o coletável necessário. O contador "x / N"
+//  acima do portal mostra o progresso. O contacto físico com o portal desbloqueado
+//  dispara a transição para o nível seguinte (gerida pela GameScene).
+//
+
 import SpriteKit
 
-/// Level-exit portal. Starts locked (dimmed) and becomes interactive after
-/// the player has collected enough collectibles. Passing through it (physical
-/// contact) when unlocked triggers the scene-level transition.
+/// Portal de saída: bloqueado até o jogador recolher todos os coletáveis do nível.
 final class PortalNode: SKSpriteNode {
 
     var isUnlocked: Bool = false {
